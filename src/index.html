@@ -16,17 +16,23 @@
 
 <body>
     <div class="container">
-        <h1>Gestore delle Attività</h1>
-
-        <div class="input-group" id="taskInputGroup">
-            <input type="text" id="taskInput" class="task-input" placeholder="Inserisci una nuova attività...">
-            <button id="addTaskButton">Aggiungi</button>
+        <div class="bar">
+            <h1>Barra</h1>
         </div>
+        <div class="tasks_container">
+            <div class="task-container" id="taskList">
+                <!-- Le attività verranno visualizzate qui -->
+            </div>
+            <div class="status-message" id="statusMessage"></div>
 
-        <div class="status-message" id="statusMessage"></div>
+            <div class="input-group" id="taskInputGroup">
+                <input type="text" id="taskInput" class="task-input" placeholder="Inserisci una nuova attività...">
+                <button id="addTaskButton">Add</button>
+            </div>
 
-        <div class="task-container" id="taskList">
-            <!-- Le attività verranno visualizzate qui -->
+
+
+
         </div>
     </div>
 
@@ -79,31 +85,15 @@
 
         // Mostra un messaggio di stato
         function showStatus(message, type) {
-            const statusEl = document.getElementById('statusMessage');
-            statusEl.innerHTML = '';
+            const statusMessage = document.getElementById('statusMessage');
+            statusMessage.textContent = message;
 
-            if (type === 'loading') {
-                const loadingEl = document.createElement('span');
-                loadingEl.className = 'loading';
-                statusEl.appendChild(loadingEl);
-            }
+            // Rimuovi tutte le classi precedenti
+            statusMessage.classList.remove('info', 'error', 'success');
 
-            statusEl.appendChild(document.createTextNode(message));
-
-            if (type === 'error') {
-                statusEl.style.backgroundColor = '#ffebee';
-                statusEl.style.color = '#d32f2f';
-            } else if (type === 'success') {
-                statusEl.style.backgroundColor = '#e8f5e9';
-                statusEl.style.color = '#388e3c';
-
-                // Nascondi il messaggio dopo 3 secondi
-                setTimeout(() => {
-                    statusEl.innerHTML = '';
-                }, 3000);
-            } else {
-                statusEl.style.backgroundColor = '#f8f8f8';
-                statusEl.style.color = '#333';
+            // Aggiungi la classe appropriata
+            if (type) {
+                statusMessage.classList.add(type);
             }
         }
 

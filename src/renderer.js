@@ -1,0 +1,1 @@
+// Il file renderer.js può essere vuoto o contenere altre funzionalità necessarie 

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { menubar } = require('menubar');
 const path = require('path');
+require('electron-reload')(__dirname);
 
 // Gestisce il comportamento quando l'app è pronta
 if (process.platform === 'darwin') {
@@ -31,9 +32,12 @@ const mb = menubar({
     index: `file://${path.resolve(__dirname, 'index.html')}`,
     icon: iconPath,
     browserWindow: {
-        width: 400,
-        height: 500,
+        width: 600,
+        height: 400,
+        borderRadius: 24,
         resizable: true,
+        transparent: true,
+        backgroundColor: '#00000000',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -73,7 +77,7 @@ mb.on('after-show', () => {
         // Sposta la finestra leggermente in basso
         mb.window.setBounds({
             x: windowBounds.x,
-            y: windowBounds.y + 32,  // Spostamento di soli 32px verso il basso
+            y: windowBounds.y + 12,  // Spostamento di soli 32px verso il basso
             width: windowBounds.width,
             height: windowBounds.height
         });
@@ -82,6 +86,31 @@ mb.on('after-show', () => {
         setTimeout(() => {
             mb.window.setOpacity(1);
         }, 50);
+
+        // Aggiungi l'event listener per il mouseleave
+        let closeTimeout;
+
+        // Funzione per gestire il mouseleave
+        const handleMouseLeave = () => {
+            closeTimeout = setTimeout(() => {
+                mb.hideWindow();
+            }, 200);
+        };
+
+        // Funzione per gestire il mouseenter
+        const handleMouseEnter = () => {
+            if (closeTimeout) {
+                clearTimeout(closeTimeout);
+            }
+        };
+
+        // Aggiungi gli event listener alla finestra
+        mb.window.on('blur', handleMouseLeave);
+        mb.window.on('focus', handleMouseEnter);
+
+        // Aggiungi anche gli event listener al contenuto web
+        mb.window.webContents.on('mouse-leave', handleMouseLeave);
+        mb.window.webContents.on('mouse-enter', handleMouseEnter);
 
         console.log('Finestra riposizionata e mostrata');
     }

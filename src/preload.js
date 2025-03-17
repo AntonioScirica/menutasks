@@ -5,5 +5,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Funzione per mostrare un alert
     showAlert: () => {
         alert('Hai cliccato il pulsante!');
+    },
+    // Funzione per gestire il focus sull'input
+    onFocusInput: (callback) => {
+        ipcRenderer.on('focus-input', callback);
     }
 }); 

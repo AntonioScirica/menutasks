@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
 const { menubar } = require('menubar');
 const path = require('path');
 require('electron-reload')(__dirname);
@@ -54,6 +54,15 @@ const mb = menubar({
 
 mb.on('ready', () => {
     console.log('L\'applicazione è pronta!');
+
+    // Registra la shortcut Option+L
+    globalShortcut.register('Alt+L', () => {
+        if (mb.window.isVisible()) {
+            mb.hideWindow();
+        } else {
+            mb.showWindow();
+        }
+    });
 });
 
 // Intercetta l'evento prima che la finestra venga mostrata
@@ -82,10 +91,12 @@ mb.on('after-show', () => {
             height: windowBounds.height
         });
 
-        // Rendi la finestra visibile con una piccola transizione
+        // Rendi la finestra visibile con un piccolo delay
         setTimeout(() => {
             mb.window.setOpacity(1);
-        }, 50);
+            // Invia l'evento per il focus
+            mb.window.webContents.send('focus-input');
+        }, 100);
 
         // Aggiungi l'event listener per il mouseleave
         let closeTimeout;
@@ -121,4 +132,9 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
     }
+});
+
+// Rimuovi le shortcut quando l'app viene chiusa
+app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
 }); 

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Task Manager</title>
+    <!-- Libreria Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Link al file CSS esterno -->
+    <link rel="stylesheet" href="styles.css?v=1.0">
+</head>
+
+<body>
+    <div class="container">
+        <h1>Gestore delle Attività</h1>
+
+        <div class="input-group" id="taskInputGroup">
+            <input type="text" id="taskInput" class="task-input" placeholder="Inserisci una nuova attività...">
+            <button id="addTaskButton">Aggiungi</button>
+        </div>
+
+        <div class="status-message" id="statusMessage"></div>
+
+        <div class="task-container" id="taskList">
+            <!-- Le attività verranno visualizzate qui -->
+        </div>
+    </div>
+
+    <script>
+        // Variabile per tenere traccia dell'elemento in fase di modifica
+        let currentEditingTaskId = null;
+        let supabase = null;
+
+        // Credenziali di Supabase
+        const SUPABASE_URL = 'https://lrchdpuvgitjzoeqeirj.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxyY2hkcHV2Z2l0anpvZXFlaXJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyMzgxMjgsImV4cCI6MjA1NzgxNDEyOH0.fnfrPJYDGjKYNouCVEzfxMnF0N-AWmYtX0V8G_bOa58';
+
+        // Inizializza l'interfaccia utente
+        function initUI() {
+            // Aggiungi il gestore eventi per il pulsante
+            document.getElementById('addTaskButton').addEventListener('click', addTask);
+
+            // Aggiungi supporto per premere Invio nel campo di input
+            document.getElementById('taskInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    addTask();
+                }
+            });
+
+            // Connetti direttamente a Supabase all'avvio
+            connectToSupabase();
+        }
+
+        // Connessione a Supabase
+        async function connectToSupabase() {
+            try {
+                showStatus('Connessione...', 'loading');
+
+                // Inizializza il client Supabase con le credenziali predefinite
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+                // Verifica la connessione
+                const { data, error } = await supabase.from('tasks').select('count').limit(1);
+
+                if (error) throw error;
+
+                // Carica le attività
+                loadTasks();
+
+            } catch (error) {
+                console.error('Errore di connessione:', error);
+                showStatus('Errora di connessione al database. Verifica le impostazioni di Row-Level Security in Supabase.', 'error');
+            }
+        }
+
+        // Mostra un messaggio di stato
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.innerHTML = '';
+
+            if (type === 'loading') {
+                const loadingEl = document.createElement('span');
+                loadingEl.className = 'loading';
+                statusEl.appendChild(loadingEl);
+            }
+
+            statusEl.appendChild(document.createTextNode(message));
+
+            if (type === 'error') {
+                statusEl.style.backgroundColor = '#ffebee';
+                statusEl.style.color = '#d32f2f';
+            } else if (type === 'success') {
+                statusEl.style.backgroundColor = '#e8f5e9';
+                statusEl.style.color = '#388e3c';
+
+                // Nascondi il messaggio dopo 3 secondi
+                setTimeout(() => {
+                    statusEl.innerHTML = '';
+                }, 3000);
+            } else {
+                statusEl.style.backgroundColor = '#f8f8f8';
+                statusEl.style.color = '#333';
+            }
+        }
+
+        // Carica le attività da Supabase
+        async function loadTasks() {
+            try {
+                showStatus('Caricamento attività...', 'loading');
+
+                const { data, error } = await supabase
+                    .from('tasks')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                // Pulisci la lista delle attività
+                const taskList = document.getElementById('taskList');
+                taskList.innerHTML = '';
+
+                // Aggiungi le attività alla lista
+                if (data && data.length > 0) {
+                    data.forEach(task => {
+                        createTaskElement(task.id, task.content);
+                    });
+                    showStatus('', '');
+                } else {
+                    showStatus('Nessuna attività trovata. Aggiungine una!', 'info');
+                }
+
+            } catch (error) {
+                console.error('Errore nel caricamento delle attività:', error);
+                showStatus('Errore nel caricamento delle attività. Verifica le politiche RLS in Supabase.', 'error');
+            }
+        }
+
+        // Crea un elemento attività nell'interfaccia
+        function createTaskElement(taskId, taskText) {
+            const taskList = document.getElementById('taskList');
+
+            // Crea il contenitore dell'attività
+            const taskElement = document.createElement('div');
+            taskElement.className = 'task-item';
+            taskElement.id = 'task-' + taskId;
+            taskElement.dataset.taskId = taskId;
+
+            // Crea l'elemento per il testo dell'attività
+            const taskTextElement = document.createElement('div');
+            taskTextElement.className = 'task-text';
+            taskTextElement.textContent = taskText;
+
+            // Crea i pulsanti di azione
+            const taskActions = document.createElement('div');
+            taskActions.className = 'task-actions';
+
+            // Pulsante modifica
+            const editButton = document.createElement('button');
+            editButton.className = 'action-button edit-button';
+            editButton.textContent = 'Modifica';
+            editButton.addEventListener('click', () => editTask(taskId));
+
+            // Pulsante elimina
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'action-button delete-button';
+            deleteButton.textContent = 'Elimina';
+            deleteButton.addEventListener('click', () => deleteTask(taskId));
+
+            // Assembla tutti gli elementi
+            taskActions.appendChild(editButton);
+            taskActions.appendChild(deleteButton);
+            taskElement.appendChild(taskTextElement);
+            taskElement.appendChild(taskActions);
+            taskList.appendChild(taskElement);
+        }
+
+        // Funzione per aggiungere una nuova attività
+        async function addTask() {
+            const taskInput = document.getElementById('taskInput');
+            const taskText = taskInput.value.trim();
+
+            if (!taskText) return;
+
+            try {
+                if (currentEditingTaskId !== null) {
+                    // Modalità modifica: aggiorna l'attività esistente
+                    showStatus('Aggiornamento attività...', 'loading');
+
+                    const { error } = await supabase
+                        .from('tasks')
+                        .update({ content: taskText })
+                        .eq('id', currentEditingTaskId);
+
+                    if (error) throw error;
+
+                    // Aggiorna l'interfaccia
+                    const taskElement = document.getElementById('task-' + currentEditingTaskId);
+                    if (taskElement) {
+                        const taskTextElement = taskElement.querySelector('.task-text');
+                        taskTextElement.textContent = taskText;
+                    }
+
+                    // Resetta la modalità modifica
+                    currentEditingTaskId = null;
+                    document.getElementById('addTaskButton').textContent = 'Aggiungi';
+
+                    showStatus('Attività aggiornata con successo!', 'success');
+                } else {
+                    // Modalità aggiunta: crea una nuova attività
+                    showStatus('Aggiunta attività...', 'loading');
+
+                    const { data, error } = await supabase
+                        .from('tasks')
+                        .insert([{ content: taskText }])
+                        .select();
+
+                    if (error) throw error;
+
+                    if (data && data.length > 0) {
+                        // Crea l'elemento dell'attività nell'interfaccia
+                        createTaskElement(data[0].id, taskText);
+                        showStatus('Attività aggiunta con successo!', 'success');
+                    }
+                }
+
+                // Pulisci il campo di input
+                taskInput.value = '';
+
+            } catch (error) {
+                console.error('Errore durante il salvataggio dell\'attività:', error);
+                showStatus('Errore: ' + error.message + ' (Verifica RLS)', 'error');
+            }
+        }
+
+        // Funzione per modificare un'attività
+        function editTask(taskId) {
+            const taskElement = document.getElementById('task-' + taskId);
+
+            if (taskElement) {
+                const taskTextElement = taskElement.querySelector('.task-text');
+                const taskText = taskTextElement.textContent;
+
+                // Carica il testo dell'attività nel campo di input
+                const taskInput = document.getElementById('taskInput');
+                taskInput.value = taskText;
+                taskInput.focus();
+
+                // Cambia il testo del pulsante e salva l'ID dell'attività in modifica
+                document.getElementById('addTaskButton').textContent = 'Aggiorna';
+                currentEditingTaskId = taskId;
+            }
+        }
+
+        // Funzione per eliminare un'attività
+        async function deleteTask(taskId) {
+            try {
+                showStatus('Eliminazione attività...', 'loading');
+
+                const { error } = await supabase
+                    .from('tasks')
+                    .delete()
+                    .eq('id', taskId);
+
+                if (error) throw error;
+
+                // Rimuovi l'elemento dall'interfaccia
+                const taskElement = document.getElementById('task-' + taskId);
+                if (taskElement) {
+                    taskElement.remove();
+                }
+
+                // Se stavi modificando questa attività, resetta la modalità modifica
+                if (currentEditingTaskId === taskId) {
+                    currentEditingTaskId = null;
+                    document.getElementById('addTaskButton').textContent = 'Aggiungi';
+                    document.getElementById('taskInput').value = '';
+                }
+
+                showStatus('Attività eliminata con successo!', 'success');
+
+            } catch (error) {
+                console.error('Errore durante l\'eliminazione dell\'attività:', error);
+                showStatus('Errore: ' + error.message + ' (Verifica RLS)', 'error');
+            }
+        }
+
+        // Inizializza l'app
+        document.addEventListener('DOMContentLoaded', initUI);
+    </script>
+</body>
+
+</html>

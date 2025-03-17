@@ -1,0 +1,28 @@
+{
+  "name": "electron-menubar-app",
+  "version": "1.0.0",
+  "description": "Electron menu bar app example",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "keywords": [
+    "electron",
+    "menubar",
+    "macos"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.9.1",
+    "menubar": "^9.3.0"
+  },
+  "build": {
+    "appId": "com.example.menubar",
+    "mac": {
+      "category": "public.app-category.utilities"
+    }
+  }
+}

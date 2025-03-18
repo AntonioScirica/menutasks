@@ -103,7 +103,15 @@
         // Inizializza l'interfaccia utente
         function initUI() {
             // Aggiungi i gestori eventi per i pulsanti
-            document.getElementById('addTaskButton').addEventListener('click', addTask);
+            document.getElementById('addTaskButton').addEventListener('click', function () {
+                if (currentEditingTaskId !== null) {
+                    // Se stiamo modificando una task, richiama addTask per confermare la modifica
+                    addTask();
+                } else {
+                    // Altrimenti aggiungi una nuova task
+                    addTask();
+                }
+            });
             document.getElementById('addProjectButton').addEventListener('click', toggleProjectInput);
             document.getElementById('confirmProjectButton').addEventListener('click', addProject);
             document.querySelector('.add-project-menu-button').addEventListener('click', () => {
@@ -593,15 +601,44 @@
 
         // Funzioni per il drag and drop
         let draggedTask = null;
+        let dragTargetTimeout = null;
+        let potentialParent = null;
 
         function handleDragStart(e) {
             draggedTask = this;
             this.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
+
+            // Memorizza l'ID del genitore originale (se esiste)
+            const taskId = this.dataset.taskId;
+            const isSubtask = this.classList.contains('subtask');
+
+            // Salva i dati della task trascinata nell'evento dataTransfer
+            const dragData = {
+                taskId: taskId,
+                isSubtask: isSubtask,
+                originalParentId: isSubtask ? this.closest('.task-container').id.replace('taskContainer-', '') : null
+            };
+
+            e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
         }
 
         function handleDragEnd(e) {
             this.classList.remove('dragging');
+
+            // Rimuovi la classe di potenziale genitore da tutte le task
+            document.querySelectorAll('.potential-parent').forEach(item => {
+                item.classList.remove('potential-parent');
+            });
+
+            // Resetta le variabili
+            if (dragTargetTimeout) {
+                clearTimeout(dragTargetTimeout);
+                dragTargetTimeout = null;
+            }
+            potentialParent = null;
+
+            // Salva l'ordine dopo il trascinamento
             saveTaskOrder();
             draggedTask = null;
         }
@@ -609,11 +646,42 @@
         function handleDragOver(e) {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
+
             if (this === draggedTask) return;
+
+            // Rimuovi la classe potential-parent da tutte le task
+            if (potentialParent && potentialParent !== this) {
+                potentialParent.classList.remove('potential-parent');
+                potentialParent = null;
+                clearTimeout(dragTargetTimeout);
+                dragTargetTimeout = null;
+            }
 
             const rect = this.getBoundingClientRect();
             const midY = rect.top + rect.height / 2;
+            const isTaskItem = this.classList.contains('task-item');
+            const isDraggedSubtask = draggedTask.classList.contains('subtask');
 
+            // Se non è una task draggabile o è una subtask, non fare nulla
+            if (!isTaskItem || (this.classList.contains('subtask') && !isDraggedSubtask)) {
+                return;
+            }
+
+            // Se il mouse è sopra la task per un po', consideriamo questa task come potenziale genitore
+            if (e.clientY > rect.top + 10 && e.clientY < rect.bottom - 10 && !this.classList.contains('subtask')) {
+                // Imposta questa task come potenziale genitore dopo un breve ritardo
+                if (!potentialParent) {
+                    potentialParent = this;
+                    dragTargetTimeout = setTimeout(() => {
+                        if (potentialParent) {
+                            potentialParent.classList.add('potential-parent');
+                        }
+                    }, 600); // 600ms di ritardo per mostrare l'indicatore visivo
+                }
+                return;
+            }
+
+            // Altrimenti, facciamo il normale comportamento di riordinamento
             if (e.clientY < midY) {
                 this.parentNode.insertBefore(draggedTask, this);
             } else {
@@ -621,20 +689,136 @@
             }
         }
 
-        function handleDrop(e) {
+        async function handleDrop(e) {
             e.preventDefault();
             if (this === draggedTask) return;
 
-            const rect = this.getBoundingClientRect();
-            const midY = rect.top + rect.height / 2;
-
-            if (e.clientY < midY) {
-                this.parentNode.insertBefore(draggedTask, this);
-            } else {
-                this.parentNode.insertBefore(draggedTask, this.nextSibling);
+            // Ottieni i dati della task trascinata
+            let dragData;
+            try {
+                dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
+            } catch (error) {
+                console.error('Errore nel parsing dei dati trascinati:', error);
+                dragData = { taskId: draggedTask ? draggedTask.dataset.taskId : null };
+                if (!dragData.taskId) {
+                    console.error('Impossibile ottenere ID della task trascinata');
+                    return;
+                }
             }
 
-            saveTaskOrder(); // Salva l'ordine immediatamente dopo il drop
+            const taskId = dragData.taskId;
+            const isTaskItem = this.classList.contains('task-item');
+
+            // Se la task di destinazione ha la classe potential-parent e non è una subtask
+            if (isTaskItem && this.classList.contains('potential-parent') && !this.classList.contains('subtask')) {
+                const parentId = this.dataset.taskId;
+                const draggedTaskId = taskId;
+
+                if (!parentId || !draggedTaskId) {
+                    console.error('ID mancante:', { parentId, draggedTaskId });
+                    showStatus('Errore: ID mancante', 'error');
+                    return;
+                }
+
+                // Evita cicli (una task non può essere parent di se stessa)
+                if (parentId === draggedTaskId) {
+                    console.error('Una task non può essere parent di se stessa');
+                    showStatus('Operazione non consentita', 'error');
+                    return;
+                }
+
+                // Prima ottieni lo stato attuale della task dal database
+                try {
+                    console.log('Aggiornamento parent_id:', { draggedTaskId, newParentId: parentId });
+
+                    // Verifica che la task esista
+                    const { data: taskExists, error: checkError } = await supabase
+                        .from('tasks')
+                        .select('id, parent_id')
+                        .eq('id', draggedTaskId)
+                        .single();
+
+                    if (checkError) {
+                        console.error('Errore nel controllo della task:', checkError);
+                        throw checkError;
+                    }
+
+                    if (!taskExists) {
+                        console.error('Task non trovata nel database:', draggedTaskId);
+                        showStatus('Task non trovata', 'error');
+                        return;
+                    }
+
+                    // Aggiorna il parent_id nel database
+                    const { error } = await supabase
+                        .from('tasks')
+                        .update({ parent_id: parentId })
+                        .eq('id', draggedTaskId);
+
+                    if (error) {
+                        console.error('Errore nell\'aggiornamento del database:', error);
+                        throw error;
+                    }
+
+                    console.log('Database aggiornato con successo');
+
+                    // Salva un riferimento per sicurezza
+                    const draggedTaskElement = draggedTask;
+
+                    // Imposta draggedTask a null per evitare problemi quando si ricarica la vista
+                    draggedTask = null;
+
+                    // Rimuovi l'elemento dalla UI
+                    if (draggedTaskElement) {
+                        if (draggedTaskElement.classList.contains('subtask')) {
+                            // Se è una subtask, rimuovila direttamente
+                            draggedTaskElement.remove();
+                        } else {
+                            // Se è una task principale, rimuovi l'intero container
+                            const taskContainer = document.getElementById(`taskContainer-${draggedTaskId}`);
+                            if (taskContainer) taskContainer.remove();
+                        }
+                        console.log('Elemento rimosso dalla UI');
+                    }
+
+                    console.log('Ricarico le task...');
+                    // Ricarica le task per garantire una visualizzazione coerente
+                    await loadTasks();
+                    console.log('Task ricaricate');
+
+                    // Mostra un messaggio di successo
+                    showStatus('Task spostata come subtask', 'success');
+                } catch (error) {
+                    console.error('Dettagli errore:', error);
+                    showStatus('Errore: ' + (error.message || 'Problema durante lo spostamento'), 'error');
+
+                    // Ricarica comunque le task per ripristinare lo stato coerente
+                    try {
+                        await loadTasks();
+                    } catch (loadError) {
+                        console.error('Errore anche nel ricaricare le task:', loadError);
+                    }
+                }
+            } else {
+                // Comportamento normale di riordinamento
+                const rect = this.getBoundingClientRect();
+                const midY = rect.top + rect.height / 2;
+
+                if (e.clientY < midY) {
+                    this.parentNode.insertBefore(draggedTask, this);
+                } else {
+                    this.parentNode.insertBefore(draggedTask, this.nextSibling);
+                }
+
+                // Salva l'ordine delle task
+                saveTaskOrder();
+            }
+
+            // Rimuovi la classe potential-parent
+            this.classList.remove('potential-parent');
+
+            // Imposta draggedTask a null per evitare problemi
+            draggedTask = null;
         }
 
         // Nuova funzione per salvare l'ordine delle task
@@ -643,13 +827,33 @@
 
             try {
                 const taskList = document.getElementById('taskList');
-                const tasks = taskList.querySelectorAll('.task-item');
-                const taskIds = Array.from(tasks).map(task => task.dataset.taskId);
+                // Ottieni solo le task principali (non le subtask)
+                const taskContainers = taskList.querySelectorAll('.task-container');
+                const taskIds = Array.from(taskContainers).map(container => {
+                    // Estrai l'ID dalla task principale all'interno del container
+                    const taskItem = container.querySelector('.task-item:not(.subtask)');
+                    return taskItem ? taskItem.dataset.taskId : null;
+                }).filter(id => id !== null);
 
                 // Salva in localStorage
                 localStorage.setItem(`taskOrder_${currentProjectId}`, JSON.stringify(taskIds));
 
-                // Aggiorna anche le posizioni nel database per ogni task
+                // Salva anche l'ordine delle subtask per ogni task principale
+                taskContainers.forEach(container => {
+                    const parentTaskId = container.id.replace('taskContainer-', '');
+                    if (!parentTaskId) return;
+
+                    const subtasksContainer = document.getElementById(`subtasksContainer-${parentTaskId}`);
+                    if (!subtasksContainer) return;
+
+                    const subtasks = subtasksContainer.querySelectorAll('.task-item');
+                    if (subtasks.length === 0) return;
+
+                    const subtaskIds = Array.from(subtasks).map(task => task.dataset.taskId);
+                    localStorage.setItem(`subtaskOrder_${parentTaskId}`, JSON.stringify(subtaskIds));
+                });
+
+                // Aggiorna anche le posizioni nel database per ogni task principale
                 for (let i = 0; i < taskIds.length; i++) {
                     await supabase
                         .from('tasks')
@@ -661,7 +865,23 @@
             }
         }
 
-        // Modifica la funzione loadTasks per usare l'ordine salvato
+        // Modifica la funzione connectToSupabase per caricare anche i progetti
+        async function connectToSupabase() {
+            try {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+                const { data, error } = await supabase.from('projects').select('count').limit(1);
+
+                if (error) throw error;
+
+                await loadProjects();
+
+            } catch (error) {
+                console.error('Errore di connessione:', error);
+            }
+        }
+
+        // Modifica la funzione loadTasks per caricare anche le subtask
         async function loadTasks() {
             if (!currentProjectId) {
                 const taskList = document.getElementById('taskList');
@@ -684,9 +904,22 @@
                 taskList.innerHTML = '';
 
                 if (data && data.length > 0) {
-                    let orderedTasks = [...data];
+                    // Separa le task principali dalle subtask
+                    const mainTasks = data.filter(task => !task.parent_id);
+                    const subtasks = data.filter(task => task.parent_id);
 
-                    // Ottieni l'ordine salvato dal localStorage
+                    // Crea una mappa delle subtask per parent_id
+                    const subtasksMap = new Map();
+                    subtasks.forEach(subtask => {
+                        if (!subtasksMap.has(subtask.parent_id)) {
+                            subtasksMap.set(subtask.parent_id, []);
+                        }
+                        subtasksMap.get(subtask.parent_id).push(subtask);
+                    });
+
+                    let orderedTasks = [...mainTasks];
+
+                    // Ottieni l'ordine salvato dal localStorage (solo per le task principali)
                     const savedOrder = localStorage.getItem(`taskOrder_${currentProjectId}`);
 
                     if (savedOrder) {
@@ -694,13 +927,13 @@
 
                         // Verifica che gli ID esistano ancora nei dati
                         const validOrderArray = orderArray.filter(id =>
-                            data.some(task => task.id.toString() === id.toString())
+                            mainTasks.some(task => task.id.toString() === id.toString())
                         );
 
                         if (validOrderArray.length > 0) {
                             // Mappa gli ID nell'ordine salvato ai task reali
                             const orderedTasksMap = new Map();
-                            data.forEach(task => {
+                            mainTasks.forEach(task => {
                                 orderedTasksMap.set(task.id.toString(), task);
                             });
 
@@ -710,7 +943,7 @@
                                 .filter(Boolean);
 
                             // Aggiungi le task che non erano nell'ordine salvato
-                            const remainingTasks = data.filter(task =>
+                            const remainingTasks = mainTasks.filter(task =>
                                 !validOrderArray.includes(task.id.toString())
                             );
 
@@ -724,9 +957,53 @@
                         orderedTasks.sort((a, b) => a.position - b.position);
                     }
 
-                    // Crea gli elementi nell'interfaccia
+                    // Per ogni task principale, ordina le sue subtask in base all'ordine salvato
+                    subtasksMap.forEach((taskSubtasks, parentId) => {
+                        // Controlla se esiste un ordine salvato per queste subtask
+                        const savedSubtaskOrder = localStorage.getItem(`subtaskOrder_${parentId}`);
+
+                        if (savedSubtaskOrder) {
+                            try {
+                                const orderArray = JSON.parse(savedSubtaskOrder);
+
+                                // Verifica che gli ID esistano ancora nelle subtask
+                                const validOrderArray = orderArray.filter(id =>
+                                    taskSubtasks.some(task => task.id.toString() === id.toString())
+                                );
+
+                                if (validOrderArray.length > 0) {
+                                    // Mappa gli ID nell'ordine salvato alle subtask reali
+                                    const orderedSubtasksMap = new Map();
+                                    taskSubtasks.forEach(task => {
+                                        orderedSubtasksMap.set(task.id.toString(), task);
+                                    });
+
+                                    // Ordina in base all'ordine salvato
+                                    const orderedSubtasks = validOrderArray
+                                        .map(id => orderedSubtasksMap.get(id.toString()))
+                                        .filter(Boolean);
+
+                                    // Aggiungi le subtask che non erano nell'ordine salvato
+                                    const remainingSubtasks = taskSubtasks.filter(task =>
+                                        !validOrderArray.includes(task.id.toString())
+                                    );
+
+                                    // Aggiorna la mappa con le subtask ordinate
+                                    subtasksMap.set(parentId, [...orderedSubtasks, ...remainingSubtasks]);
+                                }
+                            } catch (error) {
+                                console.error('Errore nel parsing dell\'ordine delle subtask:', error);
+                                // In caso di errore, mantieni l'ordine predefinito
+                            }
+                        } else {
+                            // Se non c'è un ordine salvato, ordina per position
+                            subtasksMap.set(parentId, [...taskSubtasks].sort((a, b) => a.position - b.position));
+                        }
+                    });
+
+                    // Crea gli elementi task principali e le loro subtask
                     orderedTasks.forEach(task => {
-                        createTaskElement(task.id, task.content);
+                        createTaskElement(task.id, task.content, null, subtasksMap.get(task.id));
                     });
 
                     // Salva l'ordine corrente
@@ -738,25 +1015,33 @@
             }
         }
 
-        // Modifica la funzione addTask per gestire correttamente la posizione delle nuove task
-        async function addTask() {
+        // Modifica la funzione addTask per gestire le subtask
+        async function addTask(parentId = null) {
             if (!currentProjectId) {
                 showStatus('Seleziona prima un progetto', 'error');
                 return;
             }
 
-            const taskInput = document.getElementById('taskInput');
-            const taskText = taskInput.value.trim();
+            let taskInput;
+            if (parentId) {
+                // Se è una subtask, usa l'input specifico della subtask
+                taskInput = document.getElementById(`subtaskInput-${parentId}`);
+                if (!taskInput) return;
+            } else {
+                // Altrimenti usa l'input principale
+                taskInput = document.getElementById('taskInput');
+            }
 
+            const taskText = taskInput.value.trim();
             if (!taskText) return;
 
             try {
                 if (currentEditingTaskId !== null) {
+                    // Logica per la modifica di una task esistente
                     const { error } = await supabase
                         .from('tasks')
                         .update({ content: taskText })
-                        .eq('id', currentEditingTaskId)
-                        .eq('project_id', currentProjectId);
+                        .eq('id', currentEditingTaskId);
 
                     if (error) throw error;
 
@@ -773,12 +1058,22 @@
 
                 } else {
                     // Ottieni la posizione massima delle task nel progetto
-                    const { data: maxPositionData, error: maxError } = await supabase
+                    let positionQuery = supabase
                         .from('tasks')
                         .select('position')
                         .eq('project_id', currentProjectId)
                         .order('position', { ascending: false })
                         .limit(1);
+
+                    if (parentId) {
+                        // Se è una subtask, filtra per parent_id
+                        positionQuery = positionQuery.eq('parent_id', parentId);
+                    } else {
+                        // Se è una task principale, filtra per parent_id nullo
+                        positionQuery = positionQuery.is('parent_id', null);
+                    }
+
+                    const { data: maxPositionData, error: maxError } = await positionQuery;
 
                     if (maxError) throw maxError;
 
@@ -786,19 +1081,57 @@
                         ? maxPositionData[0].position + 1
                         : 0;
 
+                    // Crea la nuova task
+                    const newTask = {
+                        content: taskText,
+                        project_id: currentProjectId,
+                        position: newPosition
+                    };
+
+                    // Se è una subtask, aggiungi il parent_id
+                    if (parentId) {
+                        newTask.parent_id = parentId;
+                    }
+
                     const { data, error } = await supabase
                         .from('tasks')
-                        .insert([{
-                            content: taskText,
-                            project_id: currentProjectId,
-                            position: newPosition
-                        }])
+                        .insert([newTask])
                         .select();
 
                     if (error) throw error;
 
                     if (data && data.length > 0) {
-                        createTaskElement(data[0].id, taskText);
+                        if (parentId) {
+                            // Se è una subtask, aggiungiamola al contenitore della task principale
+                            createTaskElement(data[0].id, taskText, parentId);
+
+                            // Nascondi l'input della subtask
+                            const subtaskInputContainer = document.getElementById(`subtaskInputContainer-${parentId}`);
+                            if (subtaskInputContainer) {
+                                subtaskInputContainer.classList.remove('visible');
+                            }
+
+                            // Assicurati che il contenitore principale abbia la classe has-subtasks
+                            const parentContainer = document.getElementById(`taskContainer-${parentId}`);
+                            if (parentContainer) {
+                                parentContainer.classList.add('has-subtasks');
+
+                                // Mostra il toggle se non è già visibile
+                                const toggleButton = parentContainer.querySelector('.toggle-subtask');
+                                if (toggleButton) {
+                                    toggleButton.style.display = 'flex';
+                                }
+
+                                // Assicurati che il contenitore delle subtask sia visibile
+                                const subtasksContainer = document.getElementById(`subtasksContainer-${parentId}`);
+                                if (subtasksContainer) {
+                                    subtasksContainer.style.display = 'block';
+                                }
+                            }
+                        } else {
+                            // Se è una task principale, creala normalmente
+                            createTaskElement(data[0].id, taskText);
+                        }
                     }
                 }
 
@@ -808,49 +1141,62 @@
             }
         }
 
-        // Modifica la funzione deleteTask per verificare il project_id
-        async function deleteTask(taskId) {
-            try {
-                const { error } = await supabase
-                    .from('tasks')
-                    .delete()
-                    .eq('id', taskId)
-                    .eq('project_id', currentProjectId);
-
-                if (error) throw error;
-
-                const taskElement = document.getElementById('task-' + taskId);
-                if (taskElement) {
-                    taskElement.remove();
+        // Funzione per aggiungere una subtask
+        function toggleSubtaskInput(taskId) {
+            const subtaskInputContainer = document.getElementById(`subtaskInputContainer-${taskId}`);
+            if (subtaskInputContainer) {
+                subtaskInputContainer.classList.toggle('visible');
+                if (subtaskInputContainer.classList.contains('visible')) {
+                    document.getElementById(`subtaskInput-${taskId}`).focus();
                 }
-            } catch (error) {
-                console.error('Errore durante l\'eliminazione dell\'attività:', error);
             }
         }
 
-        // Modifica la funzione connectToSupabase per caricare anche i progetti
-        async function connectToSupabase() {
-            try {
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-                const { data, error } = await supabase.from('projects').select('count').limit(1);
-
-                if (error) throw error;
-
-                await loadProjects();
-
-            } catch (error) {
-                console.error('Errore di connessione:', error);
+        // Funzione per toggleare la visibilità delle subtask
+        function toggleSubtasks(taskId) {
+            const taskContainer = document.getElementById(`taskContainer-${taskId}`);
+            if (taskContainer) {
+                taskContainer.classList.toggle('collapsed');
             }
         }
 
         // Crea un elemento task nell'interfaccia
-        function createTaskElement(taskId, taskText) {
-            const taskList = document.getElementById('taskList');
+        function createTaskElement(taskId, taskText, parentId = null, subtasks = []) {
+            // Trova il contenitore appropriato in base a se è una subtask o una task principale
+            let container;
+            if (parentId) {
+                // Questa è una subtask, aggiungiamola al contenitore delle subtask della task genitore
+                container = document.getElementById(`subtasksContainer-${parentId}`);
+                if (!container) {
+                    console.error('Contenitore subtask non trovato per parent_id:', parentId);
+                    return;
+                }
+            } else {
+                // Questa è una task principale, aggiungiamola alla lista principale
+                container = document.getElementById('taskList');
+            }
+
+            // Per le task principali creiamo un contenitore che conterrà la task e le eventuali subtask
+            if (!parentId) {
+                // Creiamo un contenitore per la task principale e le sue subtask
+                const taskContainer = document.createElement('div');
+                taskContainer.className = 'task-container';
+                taskContainer.id = `taskContainer-${taskId}`;
+
+                // Se ha subtask, aggiungi la classe appropriata
+                if (subtasks && subtasks.length > 0) {
+                    taskContainer.classList.add('has-subtasks');
+                }
+
+                container.appendChild(taskContainer);
+
+                // Aggiorniamo il container per inserire la task principale
+                container = taskContainer;
+            }
 
             // Crea il contenitore dell'attività
             const taskElement = document.createElement('div');
-            taskElement.className = 'task-item';
+            taskElement.className = parentId ? 'task-item subtask' : 'task-item';
             taskElement.id = 'task-' + taskId;
             taskElement.dataset.taskId = taskId;
             taskElement.draggable = true;
@@ -859,10 +1205,43 @@
             taskElement.addEventListener('dragover', handleDragOver);
             taskElement.addEventListener('drop', handleDrop);
 
+            // Crea il contenitore per il contenuto della task
+            const taskContent = document.createElement('div');
+            taskContent.className = 'task-content';
+
+            // Aggiungi l'icona cerchio a sinistra
+            const circleIcon = document.createElement('div');
+            circleIcon.className = 'task-circle';
+            circleIcon.innerHTML = '<i data-lucide="circle"></i>';
+            taskContent.appendChild(circleIcon);
+
             // Crea l'elemento per il testo dell'attività
             const taskTextElement = document.createElement('div');
             taskTextElement.className = 'task-text';
             taskTextElement.textContent = taskText;
+            taskContent.appendChild(taskTextElement);
+
+            // Se è una task principale e potrebbe avere subtask, aggiungi un toggle button a destra (ora nascosto)
+            if (!parentId) {
+                // Aggiungi il toggle button (nascosto tramite CSS)
+                const toggleButton = document.createElement('button');
+                toggleButton.className = 'toggle-subtask';
+                toggleButton.innerHTML = '<i data-lucide="chevron-down"></i>';
+                toggleButton.addEventListener('click', () => toggleSubtasks(taskId));
+                toggleButton.style.display = subtasks && subtasks.length > 0 ? 'flex' : 'none';
+                taskContent.appendChild(toggleButton);
+
+                // Se è una task principale, aggiungi il pulsante per aggiungere subtask a destra
+                const addSubtaskButton = document.createElement('button');
+                addSubtaskButton.className = 'add-subtask';
+                addSubtaskButton.innerHTML = '<i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>';
+                addSubtaskButton.title = 'Aggiungi subtask';
+                addSubtaskButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleSubtaskInput(taskId);
+                });
+                taskContent.appendChild(addSubtaskButton);
+            }
 
             // Crea i pulsanti di azione
             const taskActions = document.createElement('div');
@@ -870,22 +1249,139 @@
 
             // Pulsante modifica
             const editButton = document.createElement('button');
-            editButton.className = 'action-button edit-button';
-            editButton.textContent = 'Modifica';
+            editButton.className = 'edit-icon';
+            editButton.innerHTML = '<i data-lucide="edit-2"></i>';
+            editButton.title = 'Modifica';
             editButton.addEventListener('click', () => editTask(taskId));
 
-            // Pulsante elimina
+            // Pulsante elimina con l'icona cestino
             const deleteButton = document.createElement('button');
-            deleteButton.className = 'action-button delete-button';
-            deleteButton.textContent = 'Elimina';
-            deleteButton.addEventListener('click', () => deleteTask(taskId));
+            deleteButton.className = 'delete-icon';
+            deleteButton.innerHTML = '<i data-lucide="trash-2"></i>';
+            deleteButton.title = 'Elimina';
+            deleteButton.addEventListener('click', () => deleteTask(taskId, parentId));
 
             // Assembla tutti gli elementi
             taskActions.appendChild(editButton);
             taskActions.appendChild(deleteButton);
-            taskElement.appendChild(taskTextElement);
+            taskElement.appendChild(taskContent);
             taskElement.appendChild(taskActions);
-            taskList.appendChild(taskElement);
+
+            if (parentId) {
+                // Se è una subtask, aggiungila direttamente al contenitore delle subtask
+                container.appendChild(taskElement);
+            } else {
+                // Se è una task principale, aggiungila al container
+                container.appendChild(taskElement);
+
+                // Crea il contenitore per le subtask
+                const subtasksContainer = document.createElement('div');
+                subtasksContainer.className = 'subtasks-container';
+                subtasksContainer.id = `subtasksContainer-${taskId}`;
+                container.appendChild(subtasksContainer);
+
+                // Crea il contenitore per l'input di nuove subtask
+                const subtaskInputContainer = document.createElement('div');
+                subtaskInputContainer.className = 'subtask-input-container';
+                subtaskInputContainer.id = `subtaskInputContainer-${taskId}`;
+
+                const subtaskInput = document.createElement('input');
+                subtaskInput.type = 'text';
+                subtaskInput.className = 'subtask-input';
+                subtaskInput.id = `subtaskInput-${taskId}`;
+                subtaskInput.placeholder = 'Nuova subtask...';
+                subtaskInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        addTask(taskId);
+                    }
+                });
+
+                const confirmSubtaskButton = document.createElement('button');
+                confirmSubtaskButton.innerHTML = '<i data-lucide="plus"></i>';
+                confirmSubtaskButton.addEventListener('click', () => addTask(taskId));
+
+                subtaskInputContainer.appendChild(subtaskInput);
+                subtaskInputContainer.appendChild(confirmSubtaskButton);
+                container.appendChild(subtaskInputContainer);
+
+                // Se ci sono subtask, aggiungile
+                if (subtasks && subtasks.length > 0) {
+                    // Ordina le subtask per posizione
+                    const sortedSubtasks = [...subtasks].sort((a, b) => a.position - b.position);
+                    sortedSubtasks.forEach(subtask => {
+                        createTaskElement(subtask.id, subtask.content, taskId);
+                    });
+                }
+            }
+
+            lucide.createIcons();
+        }
+
+        // Modifica la funzione deleteTask per gestire anche le subtask
+        async function deleteTask(taskId, parentId = null) {
+            try {
+                // Prima controlla se ci sono subtask (se è una task principale)
+                if (!parentId) {
+                    const { data: subtasks, error: subtasksError } = await supabase
+                        .from('tasks')
+                        .select('id')
+                        .eq('parent_id', taskId);
+
+                    if (subtasksError) throw subtasksError;
+
+                    // Se ci sono subtask, eliminale prima
+                    if (subtasks && subtasks.length > 0) {
+                        for (const subtask of subtasks) {
+                            await supabase
+                                .from('tasks')
+                                .delete()
+                                .eq('id', subtask.id);
+                        }
+                    }
+                }
+
+                // Ora elimina la task
+                const { error } = await supabase
+                    .from('tasks')
+                    .delete()
+                    .eq('id', taskId);
+
+                if (error) throw error;
+
+                // Rimuovi l'elemento dall'interfaccia
+                if (parentId) {
+                    // Se è una subtask, rimuovi solo l'elemento task
+                    const taskElement = document.getElementById('task-' + taskId);
+                    if (taskElement) {
+                        taskElement.remove();
+                    }
+
+                    // Controlla se rimangono altre subtask
+                    const remainingSubtasks = document.querySelectorAll(`#subtasksContainer-${parentId} .task-item`);
+                    if (remainingSubtasks.length === 0) {
+                        // Se non ci sono più subtask, nascondi il toggle e rimuovi la classe has-subtasks
+                        const parentContainer = document.getElementById(`taskContainer-${parentId}`);
+                        if (parentContainer) {
+                            parentContainer.classList.remove('has-subtasks');
+                            const toggleButton = parentContainer.querySelector('.toggle-subtask');
+                            if (toggleButton) {
+                                toggleButton.style.display = 'none';
+                            }
+                        }
+                    }
+                } else {
+                    // Se è una task principale, rimuovi l'intero container
+                    const taskContainer = document.getElementById('taskContainer-' + taskId);
+                    if (taskContainer) {
+                        taskContainer.remove();
+                    }
+                }
+
+                // Aggiorna l'ordine delle task
+                saveTaskOrder();
+            } catch (error) {
+                console.error('Errore durante l\'eliminazione dell\'attività:', error);
+            }
         }
 
         // Funzione per modificare un'attività
@@ -944,6 +1440,21 @@
                     numberElement.textContent = index + 1;
                 }
             });
+        }
+
+        // Funzione per mostrare uno stato
+        function showStatus(message, type = 'info') {
+            const statusElement = document.getElementById('statusMessage');
+            if (statusElement) {
+                statusElement.textContent = message;
+                statusElement.className = 'status-message ' + type;
+
+                // Pulisci il messaggio dopo 3 secondi
+                setTimeout(() => {
+                    statusElement.textContent = '';
+                    statusElement.className = 'status-message';
+                }, 3000);
+            }
         }
 
         // Inizializza l'app

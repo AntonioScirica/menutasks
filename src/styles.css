@@ -107,26 +107,288 @@ h1 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px;
+    padding: 14px 10px;
     margin: 5px 0;
-    background-color: #f8f9fa;
+    background-color: #27272A;
+    border: 1px solid #393939;
     border-radius: 5px;
     cursor: move;
-    transition: background-color 0.2s;
+    transition: background-color 0.2s, box-shadow 0.3s;
+    color: #fff;
 }
 
 .task-item:hover {
-    background-color: #e9ecef;
+    background-color: #323235;
 }
 
 .task-item.dragging {
     opacity: 0.5;
-    background-color: #e9ecef;
+    background-color: #323235;
+    z-index: 100;
 }
 
+/* Stile per indicare che una task diventerà genitore durante il drag */
+.task-item.potential-parent {
+    box-shadow: inset 0 0 0 2px #C95D4B;
+    background-color: #323235;
+    position: relative;
+}
+
+.task-item.potential-parent::after {
+    content: "Rilascia per aggiungere come subtask";
+    position: absolute;
+    bottom: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #C95D4B;
+    color: white;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    white-space: nowrap;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+/* Stili per le subtask */
+.subtask {
+    margin-left: 8px; /* Manteniamo gli 8px come richiesto */
+    position: relative;
+    margin-top: 0;
+    width: calc(100% - 8px);
+    max-width: calc(100% - 8px);
+    box-sizing: border-box;
+    background-color: #27272A; /* Stessa tonalità delle task principali */
+    border: 1px solid #393939; /* Stesso bordo delle task principali */
+    border-radius: 5px;
+}
+
+/* Rimuovo tutti i gambetti delle subtask individuali */
+.subtask::before {
+    display: none; /* Manteniamo nascosti i gambetti individuali */
+}
+
+.subtask:last-child::before {
+    display: none;
+}
+
+.task-container {
+    margin-bottom: 0;
+}
+
+.task-container.has-subtasks {
+    margin-bottom: 0;
+}
+
+.task-container.collapsed .subtasks-container {
+    display: none;
+}
+
+.subtasks-container {
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    width: 100%;
+    box-sizing: border-box;
+    position: relative;
+    padding-left: 12px; /* Manteniamo lo spazio di 8px tra linea e subtask */
+}
+
+/* Linea verticale principale unica per tutte le subtask */
+.subtasks-container::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: #393939; /* Colore della linea che si adatta al tema scuro */
+    z-index: 1;
+}
+
+.toggle-subtask {
+    background: none;
+    border: none;
+    cursor: pointer;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    margin-right: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 16px;
+    transition: transform 0.3s ease;
+    order: -1; /* Lo manteniamo all'inizio */
+}
+
+/* Il task content ora dispone gli elementi in modo diverso */
+.task-content {
+    display: flex;
+    align-items: center;
+    flex-grow: 1;
+    justify-content: flex-start;
+}
+
+/* La task-text è posizionata all'inizio */
 .task-text {
     flex: 1;
-    margin-right: 10px;
+    margin-right: 0px;
+    margin-left: 0px;
+    padding-left: 0px;
+    color: #fff;
+    order: 1; /* Al centro */
+    max-width: 200px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    text-align: left;
+}
+
+/* Cerchio a sinistra */
+.task-circle {
+    background: none;
+    border: none;
+    cursor: default;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    margin-right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 16px;
+    order: 0; /* All'inizio */
+}
+
+/* Migliora lo stile del cerchio */
+.task-circle i {
+    width: 14px; /* Più piccolo */
+    height: 14px; /* Più piccolo */
+    color: #393939;
+    stroke-width: 1.5;
+}
+
+/* Toggle a destra (ora nascosto) */
+.task-item .toggle-subtask {
+    order: 2; /* Alla fine */
+    margin-left: auto;
+    margin-right: 0;
+    color: #fff;
+    display: none !important; /* Nascosto temporaneamente */
+}
+
+/* Stili per le icone di azione */
+.delete-icon,
+.edit-icon {
+    background: none !important;
+    border: none !important;
+    color: #555 !important;
+    cursor: pointer;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0 !important;
+    transition: opacity 0.2s ease;
+}
+
+/* Mostra le icone quando si passa sopra la task */
+.task-item:hover .delete-icon,
+.task-item:hover .edit-icon {
+    opacity: 0.6 !important;
+}
+
+/* Cambia colore quando si passa sopra le icone */
+.delete-icon:hover,
+.edit-icon:hover {
+    opacity: 1 !important;
+    color: #fff !important;
+}
+
+/* Regola specifica per le icone che sovrascrive altre regole */
+button.delete-icon,
+button.edit-icon,
+button.delete-icon:hover,
+button.edit-icon:hover,
+button.delete-icon:active,
+button.edit-icon:active,
+button.delete-icon:focus,
+button.edit-icon:focus {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+/* Regola per tutti i button, ma con eccezione per delete-icon e edit-icon */
+button:not(.delete-icon):not(.edit-icon):hover {
+    background-color: #C95D4B;
+}
+
+button:active {
+    background-color: #C95D4B;
+}
+
+/* Task actions più compatto */
+.task-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Pulsante add-subtask a destra - temporaneamente disabilitato */
+.add-subtask {
+    /* 
+    background: none;
+    border: none;
+    color: #C95D4B;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 5px;
+    margin-left: auto;
+    margin-right: 0;
+    display: flex;
+    align-items: center;
+    height: auto;
+    width: auto;
+    order: 2;
+    */
+    display: none;
+}
+
+.add-subtask:hover {
+    /*
+    color: #d06e5c;
+    background: none;
+    */
+}
+
+.collapsed .toggle-subtask {
+    transform: rotate(-90deg);
+}
+
+.subtask-input-container {
+    display: none;
+    margin-left: 20px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+.subtask-input-container.visible {
+    display: flex;
+}
+
+.subtask-input {
+    flex-grow: 1;
+    padding: 5px 8px;
+    border: 1px solid #393939;
+    border-radius: 4px;
+    background-color: #18181A;
+    color: #fff;
+    font-size: 14px;
 }
 
 /*Gruppo input e pulsante*/
@@ -186,13 +448,21 @@ h1 {
 }
 
 .edit-button {
-    background-color: #ffc107;
-    color: #000;
+    background-color: #C95D4B;
+    color: white;
+}
+
+.edit-button:hover {
+    background-color: #d06e5c;
 }
 
 .delete-button {
-    background-color: #dc3545;
+    background-color: #393939;
     color: white;
+}
+
+.delete-button:hover {
+    background-color: #4c4c4c;
 }
 
 .action-button:hover {
@@ -222,7 +492,8 @@ button svg {
     flex-shrink: 0; /* Impedisce all'icona di ridursi */
 }
 
-button:hover {
+/* Regola per tutti i button, ma con eccezione per delete-icon */
+button:not(.delete-icon):hover {
     background-color: #C95D4B;
 }
 
@@ -756,4 +1027,18 @@ button:active {
 
 .confirm-popup-button.delete:hover {
     background-color: #ff453a;
+}
+
+/* Migliora lo stile delle icone */
+.delete-icon i,
+.edit-icon i {
+    width: 16px; /* Più piccolo */
+    height: 16px; /* Più piccolo */
+    stroke-width: 1.5;
+}
+
+/* Nascondi entrambi i pulsanti di testo originali */
+.action-button.edit-button,
+.action-button.delete-button {
+    display: none;
 }

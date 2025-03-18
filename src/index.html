@@ -836,6 +836,15 @@
                     selectProject(projectId, projectName);
                 }
             }
+
+            // Aggiungi la shortcut Command+P per creare un nuovo progetto solo se la view è aperta
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') {
+                const projectsContainer = document.querySelector('.projects-container');
+                if (projectsContainer.classList.contains('visible')) {
+                    e.preventDefault();
+                    toggleProjectInput();
+                }
+            }
         });
 
         // Aggiorna i numeri dei progetti quando vengono aggiunti o rimossi

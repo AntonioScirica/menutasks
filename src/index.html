@@ -591,7 +591,77 @@
             }
         }
 
-        // Modifica la funzione loadTasks per caricare solo le task del progetto selezionato
+        // Funzioni per il drag and drop
+        let draggedTask = null;
+
+        function handleDragStart(e) {
+            draggedTask = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            saveTaskOrder();
+            draggedTask = null;
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (this === draggedTask) return;
+
+            const rect = this.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
+
+            if (e.clientY < midY) {
+                this.parentNode.insertBefore(draggedTask, this);
+            } else {
+                this.parentNode.insertBefore(draggedTask, this.nextSibling);
+            }
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            if (this === draggedTask) return;
+
+            const rect = this.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
+
+            if (e.clientY < midY) {
+                this.parentNode.insertBefore(draggedTask, this);
+            } else {
+                this.parentNode.insertBefore(draggedTask, this.nextSibling);
+            }
+
+            saveTaskOrder(); // Salva l'ordine immediatamente dopo il drop
+        }
+
+        // Nuova funzione per salvare l'ordine delle task
+        async function saveTaskOrder() {
+            if (!currentProjectId) return;
+
+            try {
+                const taskList = document.getElementById('taskList');
+                const tasks = taskList.querySelectorAll('.task-item');
+                const taskIds = Array.from(tasks).map(task => task.dataset.taskId);
+
+                // Salva in localStorage
+                localStorage.setItem(`taskOrder_${currentProjectId}`, JSON.stringify(taskIds));
+
+                // Aggiorna anche le posizioni nel database per ogni task
+                for (let i = 0; i < taskIds.length; i++) {
+                    await supabase
+                        .from('tasks')
+                        .update({ position: i })
+                        .eq('id', taskIds[i]);
+                }
+            } catch (error) {
+                console.error('Errore nel salvataggio dell\'ordine delle task:', error);
+            }
+        }
+
+        // Modifica la funzione loadTasks per usare l'ordine salvato
         async function loadTasks() {
             if (!currentProjectId) {
                 const taskList = document.getElementById('taskList');
@@ -600,10 +670,7 @@
             }
 
             try {
-                let query = supabase
-                    .from('tasks')
-                    .select('*')
-                    .order('created_at', { ascending: false });
+                let query = supabase.from('tasks').select('*');
 
                 if (currentProjectId !== 'all') {
                     query = query.eq('project_id', currentProjectId);
@@ -617,16 +684,61 @@
                 taskList.innerHTML = '';
 
                 if (data && data.length > 0) {
-                    data.forEach(task => {
+                    let orderedTasks = [...data];
+
+                    // Ottieni l'ordine salvato dal localStorage
+                    const savedOrder = localStorage.getItem(`taskOrder_${currentProjectId}`);
+
+                    if (savedOrder) {
+                        const orderArray = JSON.parse(savedOrder);
+
+                        // Verifica che gli ID esistano ancora nei dati
+                        const validOrderArray = orderArray.filter(id =>
+                            data.some(task => task.id.toString() === id.toString())
+                        );
+
+                        if (validOrderArray.length > 0) {
+                            // Mappa gli ID nell'ordine salvato ai task reali
+                            const orderedTasksMap = new Map();
+                            data.forEach(task => {
+                                orderedTasksMap.set(task.id.toString(), task);
+                            });
+
+                            // Ordina in base all'ordine salvato
+                            orderedTasks = validOrderArray
+                                .map(id => orderedTasksMap.get(id.toString()))
+                                .filter(Boolean);
+
+                            // Aggiungi le task che non erano nell'ordine salvato
+                            const remainingTasks = data.filter(task =>
+                                !validOrderArray.includes(task.id.toString())
+                            );
+
+                            orderedTasks = [...orderedTasks, ...remainingTasks];
+                        } else {
+                            // Se l'ordine salvato non contiene ID validi, usa position
+                            orderedTasks.sort((a, b) => a.position - b.position);
+                        }
+                    } else {
+                        // Se non c'è un ordine salvato, usa position
+                        orderedTasks.sort((a, b) => a.position - b.position);
+                    }
+
+                    // Crea gli elementi nell'interfaccia
+                    orderedTasks.forEach(task => {
                         createTaskElement(task.id, task.content);
                     });
+
+                    // Salva l'ordine corrente
+                    const currentOrder = orderedTasks.map(task => task.id.toString());
+                    localStorage.setItem(`taskOrder_${currentProjectId}`, JSON.stringify(currentOrder));
                 }
             } catch (error) {
                 console.error('Errore nel caricamento delle attività:', error);
             }
         }
 
-        // Modifica la funzione addTask per includere il project_id
+        // Modifica la funzione addTask per gestire correttamente la posizione delle nuove task
         async function addTask() {
             if (!currentProjectId) {
                 showStatus('Seleziona prima un progetto', 'error');
@@ -660,9 +772,27 @@
                     lucide.createIcons();
 
                 } else {
+                    // Ottieni la posizione massima delle task nel progetto
+                    const { data: maxPositionData, error: maxError } = await supabase
+                        .from('tasks')
+                        .select('position')
+                        .eq('project_id', currentProjectId)
+                        .order('position', { ascending: false })
+                        .limit(1);
+
+                    if (maxError) throw maxError;
+
+                    const newPosition = maxPositionData && maxPositionData.length > 0
+                        ? maxPositionData[0].position + 1
+                        : 0;
+
                     const { data, error } = await supabase
                         .from('tasks')
-                        .insert([{ content: taskText, project_id: currentProjectId }])
+                        .insert([{
+                            content: taskText,
+                            project_id: currentProjectId,
+                            position: newPosition
+                        }])
                         .select();
 
                     if (error) throw error;
@@ -673,7 +803,6 @@
                 }
 
                 taskInput.value = '';
-
             } catch (error) {
                 console.error('Errore durante il salvataggio dell\'attività:', error);
             }
@@ -777,47 +906,6 @@
                 addButton.innerHTML = '<i data-lucide="check"></i>';
                 lucide.createIcons();
                 currentEditingTaskId = taskId;
-            }
-        }
-
-        // Funzioni per il drag and drop
-        let draggedTask = null;
-
-        function handleDragStart(e) {
-            draggedTask = this;
-            this.classList.add('dragging');
-        }
-
-        function handleDragEnd(e) {
-            this.classList.remove('dragging');
-            draggedTask = null;
-        }
-
-        function handleDragOver(e) {
-            e.preventDefault();
-            if (this === draggedTask) return;
-
-            const rect = this.getBoundingClientRect();
-            const midY = rect.top + rect.height / 2;
-
-            if (e.clientY < midY) {
-                this.parentNode.insertBefore(draggedTask, this);
-            } else {
-                this.parentNode.insertBefore(draggedTask, this.nextSibling);
-            }
-        }
-
-        function handleDrop(e) {
-            e.preventDefault();
-            if (this === draggedTask) return;
-
-            const rect = this.getBoundingClientRect();
-            const midY = rect.top + rect.height / 2;
-
-            if (e.clientY < midY) {
-                this.parentNode.insertBefore(draggedTask, this);
-            } else {
-                this.parentNode.insertBefore(draggedTask, this.nextSibling);
             }
         }
 

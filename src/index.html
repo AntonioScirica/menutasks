@@ -49,7 +49,7 @@
             </button>
             <div class="project-input-group" id="projectInputGroup">
                 <input type="text" id="projectInput" class="project-input" placeholder="Nuovo progetto...">
-                <button id="confirmProjectButton">
+                <button id="confirmProjectButton" onclick="toggleProjectInput()">
                     <i data-lucide="plus"></i>
                 </button>
             </div>
@@ -72,6 +72,19 @@
         </div>
     </div>
 
+    <!-- Popup di conferma -->
+    <div class="confirm-popup" id="confirmDeletePopup">
+        <div class="confirm-popup-content">
+            <div class="confirm-popup-title">Delete project</div>
+            <div class="confirm-popup-message">This project contains tasks. Are you sure you want to delete it? This
+                action cannot be undone.</div>
+            <div class="confirm-popup-buttons">
+                <button class="confirm-popup-button back" onclick="closeConfirmPopup()">Back</button>
+                <button class="confirm-popup-button delete" onclick="confirmDeleteProject()">Delete</button>
+            </div>
+        </div>
+    </div>
+
     <script src="renderer.js"></script>
     <script>
         // Inizializza le Lucide Icons
@@ -81,6 +94,7 @@
         let currentEditingTaskId = null;
         let currentProjectId = null;
         let supabase = null;
+        let projectToDelete = null;
 
         // Credenziali di Supabase
         const SUPABASE_URL = 'https://lrchdpuvgitjzoeqeirj.supabase.co';
@@ -92,14 +106,8 @@
             document.getElementById('addTaskButton').addEventListener('click', addTask);
             document.getElementById('addProjectButton').addEventListener('click', toggleProjectInput);
             document.getElementById('confirmProjectButton').addEventListener('click', addProject);
-            document.querySelector('.projects-trigger').addEventListener('click', () => {
-                document.querySelector('.projects-content').classList.toggle('active');
-                document.querySelector('.projects-trigger').classList.toggle('active');
-            });
             document.querySelector('.add-project-menu-button').addEventListener('click', () => {
                 toggleProjectInput();
-                document.querySelector('.projects-content').classList.remove('active');
-                document.querySelector('.projects-trigger').classList.remove('active');
             });
 
             // Aggiungi supporto per premere Invio nei campi di input
@@ -115,31 +123,68 @@
                 }
             });
 
-            // Chiudi il container quando si clicca fuori
-            document.addEventListener('click', (e) => {
-                const container = document.querySelector('.projects-content');
-                const trigger = document.querySelector('.projects-trigger');
-                if (!container.contains(e.target) && !trigger.contains(e.target)) {
-                    container.classList.remove('active');
-                }
-            });
-
             // Connetti a Supabase all'avvio
             connectToSupabase();
+
+            // Aggiungi event listener per chiudere il menu quando si esce dal container
+            document.querySelector('.projects-container').addEventListener('mouseleave', () => {
+                const allMenus = document.querySelectorAll('.menu-dropdown');
+                allMenus.forEach(menu => {
+                    menu.style.display = 'none';
+                });
+            });
+
+            // Chiudi il menu dei progetti quando l'app viene chiusa
+            window.addEventListener('beforeunload', () => {
+                const projectsContent = document.querySelector('.projects-content');
+                if (projectsContent) {
+                    projectsContent.style.display = 'none';
+                }
+            });
         }
 
         // Aggiungi la funzione per gestire il dropdown
         function toggleProjectInput() {
             const inputGroup = document.getElementById('projectInputGroup');
             const addButton = document.getElementById('addProjectButton');
+            const projectsContainer = document.querySelector('.projects-container');
+            const projectsTrigger = document.querySelector('.projects-trigger');
+            const taskInput = document.getElementById('taskInput');
+            const taskInputGroup = document.getElementById('taskInputGroup');
+            const taskList = document.getElementById('taskList');
+            const confirmButton = document.getElementById('confirmProjectButton');
+            const projectsList = document.getElementById('projectsList');
 
             if (inputGroup.classList.contains('visible')) {
                 inputGroup.classList.remove('visible');
-                addButton.style.display = 'flex';
+                // Mostra il pulsante Add Project solo se non ci sono progetti
+                if (projectsList.children.length === 0) {
+                    addButton.style.display = 'flex';
+                }
+                // Riabilita tutti gli elementi
+                projectsTrigger.disabled = false;
+                document.querySelectorAll('.project-item').forEach(item => {
+                    item.style.pointerEvents = 'auto';
+                });
+                taskInput.disabled = false;
+                taskInputGroup.style.pointerEvents = 'auto';
+                taskList.style.pointerEvents = 'auto';
+                confirmButton.innerHTML = '<i data-lucide="plus"></i>';
+                lucide.createIcons();
             } else {
                 inputGroup.classList.add('visible');
                 addButton.style.display = 'none';
                 document.getElementById('projectInput').focus();
+                // Disabilita tutti gli elementi
+                projectsTrigger.disabled = true;
+                document.querySelectorAll('.project-item').forEach(item => {
+                    item.style.pointerEvents = 'none';
+                });
+                taskInput.disabled = true;
+                taskInputGroup.style.pointerEvents = 'none';
+                taskList.style.pointerEvents = 'none';
+                confirmButton.innerHTML = '<i data-lucide="x"></i>';
+                lucide.createIcons();
             }
         }
 
@@ -218,7 +263,7 @@
             const deleteOption = document.createElement('div');
             deleteOption.className = 'menu-option delete';
             deleteOption.innerHTML = '<i data-lucide="trash-2"></i> Elimina';
-            deleteOption.addEventListener('click', () => deleteProject(projectId));
+            deleteOption.addEventListener('click', () => showConfirmPopup(projectId));
 
             // Assembla il menu
             menuDropdown.appendChild(editOption);
@@ -236,6 +281,7 @@
         // Funzione per gestire la visualizzazione del menu
         function toggleProjectMenu(projectId) {
             const menu = document.getElementById('menu-' + projectId);
+            const menuButton = document.querySelector(`#project-${projectId} .menu-button`);
             const allMenus = document.querySelectorAll('.menu-dropdown');
 
             // Chiudi tutti gli altri menu
@@ -246,7 +292,17 @@
             });
 
             // Toggle del menu corrente
-            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+            if (menu.style.display === 'none' || !menu.style.display) {
+                // Ottieni la posizione del pulsante
+                const buttonRect = menuButton.getBoundingClientRect();
+
+                // Posiziona il menu a destra del pulsante
+                menu.style.display = 'block';
+                menu.style.top = `${buttonRect.top}px`;
+                menu.style.left = `${buttonRect.right + 8}px`;
+            } else {
+                menu.style.display = 'none';
+            }
         }
 
         // Funzione per modificare un progetto
@@ -299,15 +355,63 @@
             });
         }
 
+        // Funzione per mostrare il popup di conferma
+        async function showConfirmPopup(projectId) {
+            try {
+                // Controlla se il progetto ha delle task
+                const { data: tasks, error } = await supabase
+                    .from('tasks')
+                    .select('id')
+                    .eq('project_id', projectId)
+                    .limit(1);
+
+                if (error) throw error;
+
+                if (tasks && tasks.length > 0) {
+                    // Se ci sono task, mostra il popup di conferma
+                    projectToDelete = projectId;
+                    document.getElementById('confirmDeletePopup').classList.add('visible');
+                } else {
+                    // Se non ci sono task, elimina direttamente il progetto
+                    await deleteProject(projectId);
+                }
+            } catch (error) {
+                console.error('Errore durante il controllo delle task:', error);
+            }
+        }
+
+        // Funzione per chiudere il popup
+        function closeConfirmPopup() {
+            document.getElementById('confirmDeletePopup').classList.remove('visible');
+            projectToDelete = null;
+        }
+
+        // Funzione per confermare l'eliminazione del progetto
+        async function confirmDeleteProject() {
+            if (projectToDelete) {
+                await deleteProject(projectToDelete);
+                closeConfirmPopup();
+            }
+        }
+
         // Funzione per eliminare un progetto
         async function deleteProject(projectId) {
             try {
-                const { error } = await supabase
+                // Prima elimina tutte le task associate al progetto
+                const { error: tasksError } = await supabase
+                    .from('tasks')
+                    .delete()
+                    .eq('project_id', projectId);
+
+                if (tasksError) throw tasksError;
+
+                // Poi elimina il progetto
+                const { error: projectError } = await supabase
                     .from('projects')
                     .delete()
                     .eq('id', projectId);
 
-                if (error) throw error;
+                if (projectError) throw projectError;
 
                 // Rimuovi l'elemento dall'interfaccia
                 const projectElement = document.getElementById('project-' + projectId);
@@ -320,7 +424,6 @@
                     currentProjectId = null;
                     document.getElementById('currentProjectName').textContent = 'Select Project';
                     document.getElementById('taskList').innerHTML = '';
-                    // Rimuovi anche dal localStorage
                     localStorage.removeItem('lastSelectedProject');
                 }
 
@@ -328,11 +431,24 @@
                 const projectsList = document.getElementById('projectsList');
                 const addProjectButton = document.getElementById('addProjectButton');
                 const projectsContainer = document.querySelector('.projects-container');
-                if (projectsList.children.length === 0 && addProjectButton && projectsContainer) {
+
+                // Chiudi il menu dropdown
+                const menu = document.getElementById('menu-' + projectId);
+                if (menu) {
+                    menu.style.display = 'none';
+                }
+
+                // Se non ci sono più progetti, mostra il pulsante Add Project e nascondi il container
+                if (projectsList.children.length === 0) {
                     addProjectButton.style.display = 'flex';
                     projectsContainer.classList.remove('visible');
-                    // Aggiorna il testo del selettore quando non ci sono progetti
                     document.getElementById('currentProjectName').textContent = 'Select Project';
+                } else if (projectsList.children.length === 1) {
+                    // Se rimane solo un progetto, selezionalo automaticamente
+                    const lastProject = projectsList.children[0];
+                    const lastProjectId = lastProject.dataset.projectId;
+                    const lastProjectName = lastProject.querySelector('.project-content').textContent;
+                    selectProject(lastProjectId, lastProjectName);
                 }
 
             } catch (error) {

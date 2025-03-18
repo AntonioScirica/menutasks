@@ -1042,3 +1042,10 @@ button:active {
 .action-button.delete-button {
     display: none;
 }
+
+/* Stile per evidenziare quando si trascina una subtask sulla lista principale */
+.task-list.task-list-drop-target {
+    background-color: rgba(201, 93, 75, 0.1);
+    border: 2px dashed #C95D4B;
+    border-radius: 8px;
+}

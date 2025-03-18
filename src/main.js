@@ -86,7 +86,7 @@ mb.on('after-show', () => {
         // Sposta la finestra leggermente in basso
         mb.window.setBounds({
             x: windowBounds.x,
-            y: windowBounds.y + 32,  // Spostamento di soli 32px verso il basso
+            y: windowBounds.y + 12,  // Spostamento di soli 32px verso il basso
             width: windowBounds.width,
             height: windowBounds.height
         });

@@ -10,6 +10,8 @@
     <title>Task Manager</title>
     <!-- Libreria Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Link al file CSS esterno -->
     <link rel="stylesheet" href="styles.css?v=1.0">
 </head>
@@ -19,25 +21,29 @@
         <div class="bar">
             <h1>Barra</h1>
         </div>
-        <div class="tasks_container">
-            <div class="task-container" id="taskList">
-                <!-- Le attività verranno visualizzate qui -->
+        <div class="column_container">
+            <div class="tasks_container">
+                <div class="task-list" id="taskList">
+                    <!-- Le attività verranno visualizzate qui -->
+                </div>
+                <div class="status-message" id="statusMessage"></div>
             </div>
-            <div class="status-message" id="statusMessage"></div>
-
-            <div class="input-group" id="taskInputGroup">
-                <input type="text" id="taskInput" class="task-input" placeholder="Inserisci una nuova attività...">
-                <button id="addTaskButton">Add</button>
+            <div class="">
+                <div class="input-group" id="taskInputGroup">
+                    <input type="text" id="taskInput" class="task-input" placeholder="Inserisci una nuova attività...">
+                    <button id="addTaskButton">
+                        <i data-lucide="arrow-up"></i>
+                    </button>
+                </div>
             </div>
-
-
-
-
         </div>
     </div>
 
     <script src="renderer.js"></script>
     <script>
+        // Inizializza le Lucide Icons
+        lucide.createIcons();
+
         // Variabile per tenere traccia dell'elemento in fase di modifica
         let currentEditingTaskId = null;
         let supabase = null;
@@ -65,7 +71,7 @@
         // Connessione a Supabase
         async function connectToSupabase() {
             try {
-                showStatus('Connessione...', 'loading');
+                // showStatus('Connessione...', 'loading'); // Commentato per uso futuro
 
                 // Inizializza il client Supabase con le credenziali predefinite
                 supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -80,35 +86,42 @@
 
             } catch (error) {
                 console.error('Errore di connessione:', error);
-                showStatus('Errore di connessione al database. Verifica le impostazioni di Row-Level Security in Supabase.', 'error');
+                // showStatus('Errore di connessione al database. Verifica le impostazioni di Row-Level Security in Supabase.', 'error'); // Commentato per uso futuro
             }
         }
 
-        // Mostra un messaggio di stato
+        // Funzione per mostrare i messaggi di stato
         function showStatus(message, type) {
             const statusMessage = document.getElementById('statusMessage');
-            statusMessage.textContent = message;
-
-            // Rimuovi tutte le classi precedenti
-            statusMessage.classList.remove('info', 'error', 'success');
-
-            // Aggiungi la classe appropriata
-            if (type) {
-                statusMessage.classList.add(type);
+            if (statusMessage) {
+                statusMessage.textContent = message;
+                statusMessage.className = 'status-message ' + type;
+                // if (type === 'success' || type === 'error') {
+                //     setTimeout(() => {
+                //         statusMessage.textContent = '';
+                //         statusMessage.className = 'status-message';
+                //     }, 3000);
+                // }
             }
         }
 
         // Carica le attività da Supabase
         async function loadTasks() {
             try {
-                showStatus('Caricamento attività...', 'loading');
+                // console.log('Inizio caricamento task...');
+                // showStatus('Caricamento attività...', 'loading');
 
                 const { data, error } = await supabase
                     .from('tasks')
                     .select('*')
                     .order('created_at', { ascending: false });
 
-                if (error) throw error;
+                if (error) {
+                    console.error('Errore Supabase:', error);
+                    throw error;
+                }
+
+                // console.log('Task ricevute:', data);
 
                 // Pulisci la lista delle attività
                 const taskList = document.getElementById('taskList');
@@ -116,22 +129,26 @@
 
                 // Aggiungi le attività alla lista
                 if (data && data.length > 0) {
+                    // console.log('Creazione elementi task...');
                     data.forEach(task => {
+                        // console.log('Creazione task:', task);
                         createTaskElement(task.id, task.content);
                     });
-                    showStatus('', '');
+                    // showStatus('', '');
                 } else {
-                    showStatus('Nessuna attività trovata. Aggiungine una!', 'info');
+                    // console.log('Nessuna task trovata');
+                    // showStatus('Nessuna attività trovata. Aggiungine una!', 'info');
                 }
 
             } catch (error) {
                 console.error('Errore nel caricamento delle attività:', error);
-                showStatus('Errore nel caricamento delle attività. Verifica le politiche RLS in Supabase.', 'error');
+                // showStatus('Errore nel caricamento delle attività. Verifica le politiche RLS in Supabase.', 'error');
             }
         }
 
         // Crea un elemento attività nell'interfaccia
         function createTaskElement(taskId, taskText) {
+            console.log('Creazione elemento task:', taskId, taskText);
             const taskList = document.getElementById('taskList');
 
             // Crea il contenitore dell'attività
@@ -139,6 +156,11 @@
             taskElement.className = 'task-item';
             taskElement.id = 'task-' + taskId;
             taskElement.dataset.taskId = taskId;
+            taskElement.draggable = true;
+            taskElement.addEventListener('dragstart', handleDragStart);
+            taskElement.addEventListener('dragend', handleDragEnd);
+            taskElement.addEventListener('dragover', handleDragOver);
+            taskElement.addEventListener('drop', handleDrop);
 
             // Crea l'elemento per il testo dell'attività
             const taskTextElement = document.createElement('div');
@@ -167,6 +189,49 @@
             taskElement.appendChild(taskTextElement);
             taskElement.appendChild(taskActions);
             taskList.appendChild(taskElement);
+
+            console.log('Elemento task creato e aggiunto:', taskElement);
+        }
+
+        // Funzioni per il drag and drop
+        let draggedTask = null;
+
+        function handleDragStart(e) {
+            draggedTask = this;
+            this.classList.add('dragging');
+        }
+
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            draggedTask = null;
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            if (this === draggedTask) return;
+
+            const rect = this.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
+
+            if (e.clientY < midY) {
+                this.parentNode.insertBefore(draggedTask, this);
+            } else {
+                this.parentNode.insertBefore(draggedTask, this.nextSibling);
+            }
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            if (this === draggedTask) return;
+
+            const rect = this.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
+
+            if (e.clientY < midY) {
+                this.parentNode.insertBefore(draggedTask, this);
+            } else {
+                this.parentNode.insertBefore(draggedTask, this.nextSibling);
+            }
         }
 
         // Funzione per aggiungere una nuova attività
@@ -179,8 +244,6 @@
             try {
                 if (currentEditingTaskId !== null) {
                     // Modalità modifica: aggiorna l'attività esistente
-                    showStatus('Aggiornamento attività...', 'loading');
-
                     const { error } = await supabase
                         .from('tasks')
                         .update({ content: taskText })
@@ -197,13 +260,12 @@
 
                     // Resetta la modalità modifica
                     currentEditingTaskId = null;
-                    document.getElementById('addTaskButton').textContent = 'Aggiungi';
+                    const addButton = document.getElementById('addTaskButton');
+                    addButton.innerHTML = '<i data-lucide="arrow-up"></i>';
+                    lucide.createIcons(); // Reinizializza le icone
 
-                    showStatus('Attività aggiornata con successo!', 'success');
                 } else {
                     // Modalità aggiunta: crea una nuova attività
-                    showStatus('Aggiunta attività...', 'loading');
-
                     const { data, error } = await supabase
                         .from('tasks')
                         .insert([{ content: taskText }])
@@ -212,9 +274,7 @@
                     if (error) throw error;
 
                     if (data && data.length > 0) {
-                        // Crea l'elemento dell'attività nell'interfaccia
                         createTaskElement(data[0].id, taskText);
-                        showStatus('Attività aggiunta con successo!', 'success');
                     }
                 }
 
@@ -223,7 +283,6 @@
 
             } catch (error) {
                 console.error('Errore durante il salvataggio dell\'attività:', error);
-                showStatus('Errore: ' + error.message + ' (Verifica RLS)', 'error');
             }
         }
 
@@ -240,8 +299,10 @@
                 taskInput.value = taskText;
                 taskInput.focus();
 
-                // Cambia il testo del pulsante e salva l'ID dell'attività in modifica
-                document.getElementById('addTaskButton').textContent = 'Aggiorna';
+                // Cambia l'icona del pulsante e salva l'ID dell'attività in modifica
+                const addButton = document.getElementById('addTaskButton');
+                addButton.innerHTML = '<i data-lucide="check"></i>';
+                lucide.createIcons(); // Reinizializza le icone
                 currentEditingTaskId = taskId;
             }
         }
@@ -249,7 +310,7 @@
         // Funzione per eliminare un'attività
         async function deleteTask(taskId) {
             try {
-                showStatus('Eliminazione attività...', 'loading');
+                // showStatus('Eliminazione attività...', 'loading');
 
                 const { error } = await supabase
                     .from('tasks')
@@ -264,18 +325,12 @@
                     taskElement.remove();
                 }
 
-                // Se stavi modificando questa attività, resetta la modalità modifica
-                if (currentEditingTaskId === taskId) {
-                    currentEditingTaskId = null;
-                    document.getElementById('addTaskButton').textContent = 'Aggiungi';
-                    document.getElementById('taskInput').value = '';
-                }
-
-                showStatus('Attività eliminata con successo!', 'success');
+                // console.log('Attività eliminata con successo!');
+                // showStatus('', '');
 
             } catch (error) {
                 console.error('Errore durante l\'eliminazione dell\'attività:', error);
-                showStatus('Errore: ' + error.message + ' (Verifica RLS)', 'error');
+                // showStatus('Errore durante l\'eliminazione: ' + error.message, 'error');
             }
         }
 

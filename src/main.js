@@ -33,7 +33,7 @@ const mb = menubar({
     icon: iconPath,
     browserWindow: {
         width: 600,
-        height: 400,
+        height: 500,
         borderRadius: 24,
         resizable: true,
         transparent: true,

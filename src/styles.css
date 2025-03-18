@@ -29,10 +29,11 @@ body {
     width: 50%;
     background-color: #18181A;
     border-right: 1px solid #393939;
-    /* border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px; */
     margin: 0;
     height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
 }
 
 
@@ -93,6 +94,7 @@ h1 {
     flex-direction: column;
     overflow-y: auto;
     min-height: 0;
+    margin-bottom: 20px;
 }
 
 /* Nasconde la barra dello scroll per Chrome, Safari e Opera */
@@ -102,38 +104,29 @@ h1 {
 
 /*Singolo elemento task*/
 .task-item {
-    border-bottom: 1px solid #393939;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: #27272A;
-    margin-bottom: 8px;
-    padding: 8px;
-    border-radius: 8px;
-    min-height: 40px; /* Altezza minima per ogni task */
-    cursor: grab;
-    user-select: none;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    padding: 10px;
+    margin: 5px 0;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    cursor: move;
+    transition: background-color 0.2s;
+}
+
+.task-item:hover {
+    background-color: #e9ecef;
 }
 
 .task-item.dragging {
     opacity: 0.5;
-    cursor: grabbing;
-    transform: scale(1.02);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.task-item:last-child {
-    margin-bottom: 0;
-    border-bottom: none;
+    background-color: #e9ecef;
 }
 
 .task-text {
-    flex-grow: 1;
+    flex: 1;
     margin-right: 10px;
-    margin-left: 10px;
-    word-break: break-word;
-    color: #fff;
 }
 
 /*Gruppo input e pulsante*/
@@ -184,25 +177,26 @@ h1 {
 }
 
 .action-button {
-    background: none;
+    padding: 5px 10px;
     border: none;
-    cursor: pointer;
-    padding: 5px;
     border-radius: 3px;
-    font-size: 12px;
+    cursor: pointer;
+    font-size: 0.9em;
     transition: background-color 0.2s;
 }
 
 .edit-button {
-    color: #0071e3;
+    background-color: #ffc107;
+    color: #000;
 }
 
 .delete-button {
-    color: #ff3b30;
+    background-color: #dc3545;
+    color: white;
 }
 
 .action-button:hover {
-    background-color: rgba(0, 0, 0, 0.05);
+    opacity: 0.9;
 }
 
 /*Button add task*/
@@ -290,4 +284,319 @@ button:active {
     body {
         padding: 0;
     }
-} 
+}
+
+.projects-list {
+    margin-top: 20px;
+    overflow-y: auto;
+    flex-grow: 1;
+    padding-bottom: 20px;
+}
+
+.project-item {
+    padding: 10px;
+    margin: 0;
+    background-color: transparent;
+    border-radius: 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #fff;
+    height: 40px;
+    box-sizing: border-box;
+}
+
+.project-item:last-child {
+    border-bottom: none;
+}
+
+.project-item.active {
+    background-color: #27272A;
+    color: #fff;
+}
+
+.project-input-group {
+    display: none;
+    gap: 8px;
+    padding: 8px;
+    margin-top: auto;
+    background-color: #18181A;
+    border-top: 1px solid #393939;
+    height: 56px;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.project-input-group.visible {
+    display: flex;
+}
+
+.project-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #393939;
+    border-radius: 4px;
+    background-color: #18181A;
+    color: #fff;
+    font-size: 16px;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    height: 40px;
+    width: calc(100% - 48px);
+    line-height: 20px;
+}
+
+.project-input:focus {
+    outline: none;
+    border-color: #C95D4B;
+    box-shadow: 0 0 0 2px rgba(201, 93, 75, 0.2);
+}
+
+.project-input::placeholder {
+    color: rgba(255, 255, 255, 0.1);
+}
+
+#confirmProjectButton {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background-color: #C95D4B;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+#confirmProjectButton:hover {
+    background-color: #C95D4B;
+}
+
+#confirmProjectButton:active {
+    background-color: #C95D4B;
+}
+
+.add-project-button {
+    background: none;
+    border: none;
+    color: #fff;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 56px;
+    box-sizing: border-box;
+    justify-content: center;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.add-project-button:hover {
+    background: none;
+}
+
+#currentProjectName {
+    color: #fff;
+}
+
+.project-content {
+    flex: 1;
+    margin-right: 10px;
+}
+
+.menu-button {
+    background: none;
+    border: none;
+    color: #fff;
+    padding: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.project-item:hover .menu-button {
+    opacity: 1;
+}
+
+.menu-dropdown {
+    position: absolute;
+    background-color: #27272A;
+    border: 1px solid #393939;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    min-width: 150px;
+    width: 100%;
+}
+
+.menu-option {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #fff;
+    transition: background-color 0.2s;
+}
+
+.menu-option:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.menu-option.delete {
+    color: #ff3b30;
+}
+
+.menu-option.delete:hover {
+    background-color: rgba(255, 59, 48, 0.1);
+}
+
+.project-edit-input {
+    width: 100%;
+    padding: 5px;
+    border: 1px solid #393939;
+    border-radius: 4px;
+    background-color: #18181A;
+    color: #fff;
+    font-size: inherit;
+}
+
+.project-edit-input:focus {
+    outline: none;
+    border-color: #C95D4B;
+}
+
+.projects-container {
+    position: relative;
+    width: 100%;
+    padding: 8px;
+    box-sizing: border-box;
+    display: none;
+}
+
+.projects-container.visible {
+    display: block;
+}
+
+.projects-trigger {
+    width: 100%;
+    padding: 10px;
+    background-color: #18181A;
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 40px;
+    box-sizing: border-box;
+}
+
+.projects-trigger:hover {
+    background-color: #27272A;
+}
+
+.projects-trigger span {
+    flex: 1;
+    text-align: left;
+    margin-right: 8px;
+    line-height: 20px;
+    color: #fff;
+}
+
+.projects-trigger i {
+    width: 20px;
+    height: 20px;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.projects-content {
+    display: none;
+    position: absolute;
+    top: 8px;
+    left: 100%;
+    background-color: #09090B;
+    border: 1px solid #27272A;
+    border-radius: 4px;
+    margin-left: 8px;
+    z-index: 1000;
+    box-shadow: none;
+    width: 200px;
+}
+
+.projects-content.active {
+    display: block;
+}
+
+.projects-content::before {
+    content: 'projects';
+    display: block;
+    padding: 8px 12px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.projects-dropdown.active .projects-dropdown-button {
+    background-color: #27272A;
+    color: #fff;
+}
+
+.projects-dropdown.active .projects-dropdown-button i {
+    transform: rotate(180deg);
+}
+
+.projects-dropdown.active .projects-dropdown-content {
+    display: block;
+}
+
+.divider {
+    height: 1px;
+    background-color: #27272A;
+    margin: 0px 0;
+}
+
+.add-project-menu-button {
+    padding: 10px;
+    background: none;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    font-size: 14px;
+    height: 40px;
+    box-sizing: border-box;
+    justify-content: flex-start;
+}
+
+.add-project-menu-button:hover {
+    background-color: #27272A;
+}

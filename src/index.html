@@ -218,6 +218,9 @@
 
                     // Seleziona automaticamente il progetto appena creato
                     selectProject(data[0].id, projectName);
+
+                    // Aggiorna i numeri dei progetti dopo l'aggiunta
+                    updateProjectNumbers();
                 }
             } catch (error) {
                 console.error('Errore durante la creazione del progetto:', error);
@@ -450,6 +453,9 @@
                     const lastProjectName = lastProject.querySelector('.project-content').textContent;
                     selectProject(lastProjectId, lastProjectName);
                 }
+
+                // Aggiorna i numeri dei progetti dopo l'eliminazione
+                updateProjectNumbers();
 
             } catch (error) {
                 console.error('Errore durante l\'eliminazione del progetto:', error);
@@ -751,6 +757,34 @@
             } else {
                 this.parentNode.insertBefore(draggedTask, this.nextSibling);
             }
+        }
+
+        // Aggiungi la gestione della scorciatoia da tastiera
+        document.addEventListener('keydown', (e) => {
+            // Controlla se è premuto Command (Mac) o Control (Windows)
+            if ((e.metaKey || e.ctrlKey) && !isNaN(e.key) && e.key !== '0') {
+                e.preventDefault();
+                const projectNumber = parseInt(e.key);
+                const projects = document.querySelectorAll('.project-item');
+
+                if (projectNumber <= projects.length) {
+                    const project = projects[projectNumber - 1];
+                    const projectId = project.dataset.projectId;
+                    const projectName = project.querySelector('.project-content').textContent;
+                    selectProject(projectId, projectName);
+                }
+            }
+        });
+
+        // Aggiorna i numeri dei progetti quando vengono aggiunti o rimossi
+        function updateProjectNumbers() {
+            const projects = document.querySelectorAll('.project-item');
+            projects.forEach((project, index) => {
+                const numberElement = project.querySelector('.project-number');
+                if (numberElement) {
+                    numberElement.textContent = index + 1;
+                }
+            });
         }
 
         // Inizializza l'app

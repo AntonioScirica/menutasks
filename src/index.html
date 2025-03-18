@@ -19,7 +19,40 @@
 <body>
     <div class="container">
         <div class="bar">
-            <h1>Barra</h1>
+            <div class="projects-container">
+                <button class="projects-trigger">
+                    <span id="currentProjectName">Select Project</span>
+                    <i>
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                    </i>
+                </button>
+                <div class="projects-content">
+                    <div id="projectsList">
+                        <!-- I progetti verranno inseriti qui dinamicamente -->
+                    </div>
+                    <div class="divider"></div>
+                    <button class="add-project-menu-button">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8 3.33334V12.6667M3.33333 8H12.6667" stroke="currentColor" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        Add project
+                    </button>
+                </div>
+            </div>
+            <button class="add-project-button" id="addProjectButton">
+                <i data-lucide="plus"></i>
+                Add Project
+            </button>
+            <div class="project-input-group" id="projectInputGroup">
+                <input type="text" id="projectInput" class="project-input" placeholder="Nuovo progetto...">
+                <button id="confirmProjectButton">
+                    <i data-lucide="plus"></i>
+                </button>
+            </div>
         </div>
         <div class="column_container">
             <div class="tasks_container">
@@ -44,8 +77,9 @@
         // Inizializza le Lucide Icons
         lucide.createIcons();
 
-        // Variabile per tenere traccia dell'elemento in fase di modifica
+        // Variabili globali
         let currentEditingTaskId = null;
+        let currentProjectId = null;
         let supabase = null;
 
         // Credenziali di Supabase
@@ -54,101 +88,451 @@
 
         // Inizializza l'interfaccia utente
         function initUI() {
-            // Aggiungi il gestore eventi per il pulsante
+            // Aggiungi i gestori eventi per i pulsanti
             document.getElementById('addTaskButton').addEventListener('click', addTask);
+            document.getElementById('addProjectButton').addEventListener('click', toggleProjectInput);
+            document.getElementById('confirmProjectButton').addEventListener('click', addProject);
+            document.querySelector('.projects-trigger').addEventListener('click', () => {
+                document.querySelector('.projects-content').classList.toggle('active');
+                document.querySelector('.projects-trigger').classList.toggle('active');
+            });
+            document.querySelector('.add-project-menu-button').addEventListener('click', () => {
+                toggleProjectInput();
+                document.querySelector('.projects-content').classList.remove('active');
+                document.querySelector('.projects-trigger').classList.remove('active');
+            });
 
-            // Aggiungi supporto per premere Invio nel campo di input
+            // Aggiungi supporto per premere Invio nei campi di input
             document.getElementById('taskInput').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     addTask();
                 }
             });
 
-            // Connetti direttamente a Supabase all'avvio
+            document.getElementById('projectInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    addProject();
+                }
+            });
+
+            // Chiudi il container quando si clicca fuori
+            document.addEventListener('click', (e) => {
+                const container = document.querySelector('.projects-content');
+                const trigger = document.querySelector('.projects-trigger');
+                if (!container.contains(e.target) && !trigger.contains(e.target)) {
+                    container.classList.remove('active');
+                }
+            });
+
+            // Connetti a Supabase all'avvio
             connectToSupabase();
         }
 
-        // Connessione a Supabase
-        async function connectToSupabase() {
+        // Aggiungi la funzione per gestire il dropdown
+        function toggleProjectInput() {
+            const inputGroup = document.getElementById('projectInputGroup');
+            const addButton = document.getElementById('addProjectButton');
+
+            if (inputGroup.classList.contains('visible')) {
+                inputGroup.classList.remove('visible');
+                addButton.style.display = 'flex';
+            } else {
+                inputGroup.classList.add('visible');
+                addButton.style.display = 'none';
+                document.getElementById('projectInput').focus();
+            }
+        }
+
+        // Funzione per aggiungere un nuovo progetto
+        async function addProject() {
+            const projectInput = document.getElementById('projectInput');
+            const projectName = projectInput.value.trim();
+
+            if (!projectName) return;
+
             try {
-                // showStatus('Connessione...', 'loading'); // Commentato per uso futuro
-
-                // Inizializza il client Supabase con le credenziali predefinite
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-                // Verifica la connessione
-                const { data, error } = await supabase.from('tasks').select('count').limit(1);
+                const { data, error } = await supabase
+                    .from('projects')
+                    .insert([{ name: projectName }])
+                    .select();
 
                 if (error) throw error;
 
-                // Carica le attività
-                loadTasks();
+                if (data && data.length > 0) {
+                    createProjectElement(data[0].id, projectName);
+                    projectInput.value = '';
+                    toggleProjectInput(); // Nascondi l'input dopo aver aggiunto il progetto
+
+                    // Nascondi il pulsante Add Project e mostra il container dei progetti
+                    const addProjectButton = document.getElementById('addProjectButton');
+                    const projectsContainer = document.querySelector('.projects-container');
+                    if (addProjectButton && projectsContainer) {
+                        addProjectButton.style.display = 'none';
+                        projectsContainer.classList.add('visible');
+                    }
+
+                    // Seleziona automaticamente il progetto appena creato
+                    selectProject(data[0].id, projectName);
+                }
+            } catch (error) {
+                console.error('Errore durante la creazione del progetto:', error);
+            }
+        }
+
+        // Crea un elemento progetto nell'interfaccia
+        function createProjectElement(projectId, projectName) {
+            const projectsList = document.getElementById('projectsList');
+
+            const projectElement = document.createElement('div');
+            projectElement.className = 'project-item';
+            projectElement.id = 'project-' + projectId;
+            projectElement.dataset.projectId = projectId;
+
+            // Crea il contenitore per il nome e il menu
+            const projectContent = document.createElement('div');
+            projectContent.className = 'project-content';
+            projectContent.textContent = projectName;
+            projectContent.addEventListener('click', () => selectProject(projectId, projectName));
+
+            // Crea il menu a 3 puntini
+            const menuButton = document.createElement('button');
+            menuButton.className = 'menu-button';
+            menuButton.innerHTML = '<i data-lucide="more-vertical"></i>';
+            menuButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleProjectMenu(projectId);
+            });
+
+            // Crea il menu dropdown
+            const menuDropdown = document.createElement('div');
+            menuDropdown.className = 'menu-dropdown';
+            menuDropdown.id = 'menu-' + projectId;
+            menuDropdown.style.display = 'none';
+
+            // Crea le opzioni del menu
+            const editOption = document.createElement('div');
+            editOption.className = 'menu-option';
+            editOption.innerHTML = '<i data-lucide="edit"></i> Modifica';
+            editOption.addEventListener('click', () => editProject(projectId, projectName));
+
+            const deleteOption = document.createElement('div');
+            deleteOption.className = 'menu-option delete';
+            deleteOption.innerHTML = '<i data-lucide="trash-2"></i> Elimina';
+            deleteOption.addEventListener('click', () => deleteProject(projectId));
+
+            // Assembla il menu
+            menuDropdown.appendChild(editOption);
+            menuDropdown.appendChild(deleteOption);
+
+            // Assembla il progetto
+            projectElement.appendChild(projectContent);
+            projectElement.appendChild(menuButton);
+            projectElement.appendChild(menuDropdown);
+
+            projectsList.appendChild(projectElement);
+            lucide.createIcons();
+        }
+
+        // Funzione per gestire la visualizzazione del menu
+        function toggleProjectMenu(projectId) {
+            const menu = document.getElementById('menu-' + projectId);
+            const allMenus = document.querySelectorAll('.menu-dropdown');
+
+            // Chiudi tutti gli altri menu
+            allMenus.forEach(m => {
+                if (m.id !== 'menu-' + projectId) {
+                    m.style.display = 'none';
+                }
+            });
+
+            // Toggle del menu corrente
+            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // Funzione per modificare un progetto
+        function editProject(projectId, currentName) {
+            const projectElement = document.getElementById('project-' + projectId);
+            const projectContent = projectElement.querySelector('.project-content');
+
+            // Crea l'input per la modifica
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentName;
+            input.className = 'project-edit-input';
+
+            // Sostituisci il contenuto con l'input
+            projectContent.innerHTML = '';
+            projectContent.appendChild(input);
+            input.focus();
+
+            // Gestisci il salvataggio
+            input.addEventListener('blur', async () => {
+                const newName = input.value.trim();
+                if (newName && newName !== currentName) {
+                    try {
+                        const { error } = await supabase
+                            .from('projects')
+                            .update({ name: newName })
+                            .eq('id', projectId);
+
+                        if (error) throw error;
+
+                        projectContent.textContent = newName;
+
+                        // Se il progetto è attualmente selezionato, aggiorna anche il titolo
+                        if (currentProjectId === projectId) {
+                            document.getElementById('currentProjectName').textContent = newName;
+                        }
+                    } catch (error) {
+                        console.error('Errore durante la modifica del progetto:', error);
+                    }
+                } else {
+                    projectContent.textContent = currentName;
+                }
+            });
+
+            // Gestisci il tasto Enter
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    input.blur();
+                }
+            });
+        }
+
+        // Funzione per eliminare un progetto
+        async function deleteProject(projectId) {
+            try {
+                const { error } = await supabase
+                    .from('projects')
+                    .delete()
+                    .eq('id', projectId);
+
+                if (error) throw error;
+
+                // Rimuovi l'elemento dall'interfaccia
+                const projectElement = document.getElementById('project-' + projectId);
+                if (projectElement) {
+                    projectElement.remove();
+                }
+
+                // Se il progetto eliminato era quello selezionato, resetta la selezione
+                if (currentProjectId === projectId) {
+                    currentProjectId = null;
+                    document.getElementById('currentProjectName').textContent = 'Select Project';
+                    document.getElementById('taskList').innerHTML = '';
+                    // Rimuovi anche dal localStorage
+                    localStorage.removeItem('lastSelectedProject');
+                }
+
+                // Controlla se ci sono ancora progetti e aggiorna la visibilità del pulsante e del container
+                const projectsList = document.getElementById('projectsList');
+                const addProjectButton = document.getElementById('addProjectButton');
+                const projectsContainer = document.querySelector('.projects-container');
+                if (projectsList.children.length === 0 && addProjectButton && projectsContainer) {
+                    addProjectButton.style.display = 'flex';
+                    projectsContainer.classList.remove('visible');
+                    // Aggiorna il testo del selettore quando non ci sono progetti
+                    document.getElementById('currentProjectName').textContent = 'Select Project';
+                }
 
             } catch (error) {
-                console.error('Errore di connessione:', error);
-                // showStatus('Errore di connessione al database. Verifica le impostazioni di Row-Level Security in Supabase.', 'error'); // Commentato per uso futuro
+                console.error('Errore durante l\'eliminazione del progetto:', error);
             }
         }
 
-        // Funzione per mostrare i messaggi di stato
-        function showStatus(message, type) {
-            const statusMessage = document.getElementById('statusMessage');
-            if (statusMessage) {
-                statusMessage.textContent = message;
-                statusMessage.className = 'status-message ' + type;
-                // if (type === 'success' || type === 'error') {
-                //     setTimeout(() => {
-                //         statusMessage.textContent = '';
-                //         statusMessage.className = 'status-message';
-                //     }, 3000);
-                // }
-            }
+        // Funzione per selezionare un progetto
+        async function selectProject(projectId, projectName) {
+            currentProjectId = projectId;
+
+            // Salva l'ultimo progetto selezionato
+            localStorage.setItem('lastSelectedProject', JSON.stringify({
+                id: projectId,
+                name: projectName
+            }));
+
+            // Aggiorna l'interfaccia
+            document.getElementById('currentProjectName').textContent = projectName;
+
+            // Aggiorna lo stile dei progetti
+            document.querySelectorAll('.project-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.getElementById('project-' + projectId).classList.add('active');
+
+            // Chiudi il dropdown
+            document.querySelector('.projects-content').classList.remove('active');
+
+            // Carica le task del progetto
+            await loadTasks();
         }
 
-        // Carica le attività da Supabase
-        async function loadTasks() {
+        // Carica i progetti da Supabase
+        async function loadProjects() {
             try {
-                // console.log('Inizio caricamento task...');
-                // showStatus('Caricamento attività...', 'loading');
-
                 const { data, error } = await supabase
-                    .from('tasks')
+                    .from('projects')
                     .select('*')
                     .order('created_at', { ascending: false });
 
-                if (error) {
-                    console.error('Errore Supabase:', error);
-                    throw error;
+                if (error) throw error;
+
+                const projectsList = document.getElementById('projectsList');
+                const addProjectButton = document.getElementById('addProjectButton');
+                const projectsContainer = document.querySelector('.projects-container');
+                projectsList.innerHTML = '';
+
+                // Gestisci la visibilità del pulsante Add Project e del container dei progetti
+                if (addProjectButton && projectsContainer) {
+                    if (!data || data.length === 0) {
+                        addProjectButton.style.display = 'flex';
+                        projectsContainer.classList.remove('visible');
+                    } else {
+                        addProjectButton.style.display = 'none';
+                        projectsContainer.classList.add('visible');
+                    }
                 }
 
-                // console.log('Task ricevute:', data);
-
-                // Pulisci la lista delle attività
-                const taskList = document.getElementById('taskList');
-                taskList.innerHTML = '';
-
-                // Aggiungi le attività alla lista
                 if (data && data.length > 0) {
-                    // console.log('Creazione elementi task...');
-                    data.forEach(task => {
-                        // console.log('Creazione task:', task);
-                        createTaskElement(task.id, task.content);
+                    data.forEach(project => {
+                        createProjectElement(project.id, project.name);
                     });
-                    // showStatus('', '');
-                } else {
-                    // console.log('Nessuna task trovata');
-                    // showStatus('Nessuna attività trovata. Aggiungine una!', 'info');
-                }
 
+                    // Carica l'ultimo progetto selezionato
+                    const lastProject = localStorage.getItem('lastSelectedProject');
+                    if (lastProject) {
+                        const { id, name } = JSON.parse(lastProject);
+                        // Verifica che il progetto esista ancora
+                        if (data.some(project => project.id === id)) {
+                            selectProject(id, name);
+                        }
+                    }
+                }
             } catch (error) {
-                console.error('Errore nel caricamento delle attività:', error);
-                // showStatus('Errore nel caricamento delle attività. Verifica le politiche RLS in Supabase.', 'error');
+                console.error('Errore nel caricamento dei progetti:', error);
             }
         }
 
-        // Crea un elemento attività nell'interfaccia
+        // Modifica la funzione loadTasks per caricare solo le task del progetto selezionato
+        async function loadTasks() {
+            if (!currentProjectId) {
+                const taskList = document.getElementById('taskList');
+                taskList.innerHTML = '';
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('tasks')
+                    .select('*')
+                    .eq('project_id', currentProjectId)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                const taskList = document.getElementById('taskList');
+                taskList.innerHTML = '';
+
+                if (data && data.length > 0) {
+                    data.forEach(task => {
+                        createTaskElement(task.id, task.content);
+                    });
+                }
+            } catch (error) {
+                console.error('Errore nel caricamento delle attività:', error);
+            }
+        }
+
+        // Modifica la funzione addTask per includere il project_id
+        async function addTask() {
+            if (!currentProjectId) {
+                showStatus('Seleziona prima un progetto', 'error');
+                return;
+            }
+
+            const taskInput = document.getElementById('taskInput');
+            const taskText = taskInput.value.trim();
+
+            if (!taskText) return;
+
+            try {
+                if (currentEditingTaskId !== null) {
+                    const { error } = await supabase
+                        .from('tasks')
+                        .update({ content: taskText })
+                        .eq('id', currentEditingTaskId)
+                        .eq('project_id', currentProjectId);
+
+                    if (error) throw error;
+
+                    const taskElement = document.getElementById('task-' + currentEditingTaskId);
+                    if (taskElement) {
+                        const taskTextElement = taskElement.querySelector('.task-text');
+                        taskTextElement.textContent = taskText;
+                    }
+
+                    currentEditingTaskId = null;
+                    const addButton = document.getElementById('addTaskButton');
+                    addButton.innerHTML = '<i data-lucide="arrow-up"></i>';
+                    lucide.createIcons();
+
+                } else {
+                    const { data, error } = await supabase
+                        .from('tasks')
+                        .insert([{ content: taskText, project_id: currentProjectId }])
+                        .select();
+
+                    if (error) throw error;
+
+                    if (data && data.length > 0) {
+                        createTaskElement(data[0].id, taskText);
+                    }
+                }
+
+                taskInput.value = '';
+
+            } catch (error) {
+                console.error('Errore durante il salvataggio dell\'attività:', error);
+            }
+        }
+
+        // Modifica la funzione deleteTask per verificare il project_id
+        async function deleteTask(taskId) {
+            try {
+                const { error } = await supabase
+                    .from('tasks')
+                    .delete()
+                    .eq('id', taskId)
+                    .eq('project_id', currentProjectId);
+
+                if (error) throw error;
+
+                const taskElement = document.getElementById('task-' + taskId);
+                if (taskElement) {
+                    taskElement.remove();
+                }
+            } catch (error) {
+                console.error('Errore durante l\'eliminazione dell\'attività:', error);
+            }
+        }
+
+        // Modifica la funzione connectToSupabase per caricare anche i progetti
+        async function connectToSupabase() {
+            try {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+                const { data, error } = await supabase.from('projects').select('count').limit(1);
+
+                if (error) throw error;
+
+                await loadProjects();
+
+            } catch (error) {
+                console.error('Errore di connessione:', error);
+            }
+        }
+
+        // Crea un elemento task nell'interfaccia
         function createTaskElement(taskId, taskText) {
-            console.log('Creazione elemento task:', taskId, taskText);
             const taskList = document.getElementById('taskList');
 
             // Crea il contenitore dell'attività
@@ -189,8 +573,27 @@
             taskElement.appendChild(taskTextElement);
             taskElement.appendChild(taskActions);
             taskList.appendChild(taskElement);
+        }
 
-            console.log('Elemento task creato e aggiunto:', taskElement);
+        // Funzione per modificare un'attività
+        function editTask(taskId) {
+            const taskElement = document.getElementById('task-' + taskId);
+
+            if (taskElement) {
+                const taskTextElement = taskElement.querySelector('.task-text');
+                const taskText = taskTextElement.textContent;
+
+                // Carica il testo dell'attività nel campo di input
+                const taskInput = document.getElementById('taskInput');
+                taskInput.value = taskText;
+                taskInput.focus();
+
+                // Cambia l'icona del pulsante e salva l'ID dell'attività in modifica
+                const addButton = document.getElementById('addTaskButton');
+                addButton.innerHTML = '<i data-lucide="check"></i>';
+                lucide.createIcons();
+                currentEditingTaskId = taskId;
+            }
         }
 
         // Funzioni per il drag and drop
@@ -231,106 +634,6 @@
                 this.parentNode.insertBefore(draggedTask, this);
             } else {
                 this.parentNode.insertBefore(draggedTask, this.nextSibling);
-            }
-        }
-
-        // Funzione per aggiungere una nuova attività
-        async function addTask() {
-            const taskInput = document.getElementById('taskInput');
-            const taskText = taskInput.value.trim();
-
-            if (!taskText) return;
-
-            try {
-                if (currentEditingTaskId !== null) {
-                    // Modalità modifica: aggiorna l'attività esistente
-                    const { error } = await supabase
-                        .from('tasks')
-                        .update({ content: taskText })
-                        .eq('id', currentEditingTaskId);
-
-                    if (error) throw error;
-
-                    // Aggiorna l'interfaccia
-                    const taskElement = document.getElementById('task-' + currentEditingTaskId);
-                    if (taskElement) {
-                        const taskTextElement = taskElement.querySelector('.task-text');
-                        taskTextElement.textContent = taskText;
-                    }
-
-                    // Resetta la modalità modifica
-                    currentEditingTaskId = null;
-                    const addButton = document.getElementById('addTaskButton');
-                    addButton.innerHTML = '<i data-lucide="arrow-up"></i>';
-                    lucide.createIcons(); // Reinizializza le icone
-
-                } else {
-                    // Modalità aggiunta: crea una nuova attività
-                    const { data, error } = await supabase
-                        .from('tasks')
-                        .insert([{ content: taskText }])
-                        .select();
-
-                    if (error) throw error;
-
-                    if (data && data.length > 0) {
-                        createTaskElement(data[0].id, taskText);
-                    }
-                }
-
-                // Pulisci il campo di input
-                taskInput.value = '';
-
-            } catch (error) {
-                console.error('Errore durante il salvataggio dell\'attività:', error);
-            }
-        }
-
-        // Funzione per modificare un'attività
-        function editTask(taskId) {
-            const taskElement = document.getElementById('task-' + taskId);
-
-            if (taskElement) {
-                const taskTextElement = taskElement.querySelector('.task-text');
-                const taskText = taskTextElement.textContent;
-
-                // Carica il testo dell'attività nel campo di input
-                const taskInput = document.getElementById('taskInput');
-                taskInput.value = taskText;
-                taskInput.focus();
-
-                // Cambia l'icona del pulsante e salva l'ID dell'attività in modifica
-                const addButton = document.getElementById('addTaskButton');
-                addButton.innerHTML = '<i data-lucide="check"></i>';
-                lucide.createIcons(); // Reinizializza le icone
-                currentEditingTaskId = taskId;
-            }
-        }
-
-        // Funzione per eliminare un'attività
-        async function deleteTask(taskId) {
-            try {
-                // showStatus('Eliminazione attività...', 'loading');
-
-                const { error } = await supabase
-                    .from('tasks')
-                    .delete()
-                    .eq('id', taskId);
-
-                if (error) throw error;
-
-                // Rimuovi l'elemento dall'interfaccia
-                const taskElement = document.getElementById('task-' + taskId);
-                if (taskElement) {
-                    taskElement.remove();
-                }
-
-                // console.log('Attività eliminata con successo!');
-                // showStatus('', '');
-
-            } catch (error) {
-                console.error('Errore durante l\'eliminazione dell\'attività:', error);
-                // showStatus('Errore durante l\'eliminazione: ' + error.message, 'error');
             }
         }
 

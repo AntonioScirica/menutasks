@@ -219,8 +219,22 @@
                     // Seleziona automaticamente il progetto appena creato
                     selectProject(data[0].id, projectName);
 
-                    // Aggiorna i numeri dei progetti dopo l'aggiunta
-                    updateProjectNumbers();
+                    // Controlla se ora ci sono più di un progetto e aggiungi l'opzione "All" se necessario
+                    const projectsList = document.getElementById('projectsList');
+                    const projectElements = projectsList.querySelectorAll('.project-item');
+                    const allOption = document.getElementById('project-all');
+
+                    if (projectElements.length > 1 && !allOption) {
+                        const newAllOption = document.createElement('div');
+                        newAllOption.className = 'project-item';
+                        newAllOption.id = 'project-all';
+                        newAllOption.dataset.projectId = 'all';
+                        newAllOption.innerHTML = `
+                            <div class="project-content">All</div>
+                        `;
+                        newAllOption.addEventListener('click', () => selectProject('all', 'All'));
+                        projectsList.insertBefore(newAllOption, projectsList.firstChild);
+                    }
                 }
             } catch (error) {
                 console.error('Errore durante la creazione del progetto:', error);
@@ -240,7 +254,13 @@
             const projectContent = document.createElement('div');
             projectContent.className = 'project-content';
             projectContent.textContent = projectName;
-            projectContent.addEventListener('click', () => selectProject(projectId, projectName));
+            projectContent.addEventListener('click', () => {
+                if (currentProjectId === 'all') {
+                    selectProject(projectId, projectName);
+                } else {
+                    selectProject(projectId, projectName);
+                }
+            });
 
             // Crea il menu a 3 puntini
             const menuButton = document.createElement('button');
@@ -441,21 +461,34 @@
                     menu.style.display = 'none';
                 }
 
-                // Se non ci sono più progetti, mostra il pulsante Add Project e nascondi il container
-                if (projectsList.children.length === 0) {
+                // Controlla il numero di progetti rimanenti (escludendo l'opzione "All")
+                const remainingProjects = Array.from(projectsList.children).filter(child => child.dataset.projectId !== 'all');
+
+                if (remainingProjects.length === 0) {
+                    // Se non ci sono più progetti, mostra il pulsante Add Project e nascondi il container
                     addProjectButton.style.display = 'flex';
                     projectsContainer.classList.remove('visible');
                     document.getElementById('currentProjectName').textContent = 'Select Project';
-                } else if (projectsList.children.length === 1) {
-                    // Se rimane solo un progetto, selezionalo automaticamente
-                    const lastProject = projectsList.children[0];
+                    document.getElementById('taskList').innerHTML = ''; // Pulisci la lista delle task
+
+                    // Rimuovi l'opzione "All" se presente
+                    const allOption = document.getElementById('project-all');
+                    if (allOption) {
+                        allOption.remove();
+                    }
+                } else if (remainingProjects.length === 1) {
+                    // Se rimane solo un progetto, selezionalo automaticamente e rimuovi l'opzione "All"
+                    const lastProject = remainingProjects[0];
                     const lastProjectId = lastProject.dataset.projectId;
                     const lastProjectName = lastProject.querySelector('.project-content').textContent;
                     selectProject(lastProjectId, lastProjectName);
-                }
 
-                // Aggiorna i numeri dei progetti dopo l'eliminazione
-                updateProjectNumbers();
+                    // Rimuovi l'opzione "All" se presente
+                    const allOption = document.getElementById('project-all');
+                    if (allOption) {
+                        allOption.remove();
+                    }
+                }
 
             } catch (error) {
                 console.error('Errore durante l\'eliminazione del progetto:', error);
@@ -479,7 +512,10 @@
             document.querySelectorAll('.project-item').forEach(item => {
                 item.classList.remove('active');
             });
-            document.getElementById('project-' + projectId).classList.add('active');
+
+            if (projectId !== 'all') {
+                document.getElementById('project-' + projectId).classList.add('active');
+            }
 
             // Chiudi il dropdown
             document.querySelector('.projects-content').classList.remove('active');
@@ -511,23 +547,44 @@
                     } else {
                         addProjectButton.style.display = 'none';
                         projectsContainer.classList.add('visible');
-                    }
-                }
 
-                if (data && data.length > 0) {
-                    data.forEach(project => {
-                        createProjectElement(project.id, project.name);
-                    });
+                        // Prima crea tutti i progetti
+                        if (data && data.length > 0) {
+                            data.forEach(project => {
+                                createProjectElement(project.id, project.name);
+                            });
 
-                    // Carica l'ultimo progetto selezionato
-                    const lastProject = localStorage.getItem('lastSelectedProject');
-                    if (lastProject) {
-                        const { id, name } = JSON.parse(lastProject);
-                        // Verifica che il progetto esista ancora
-                        if (data.some(project => project.id === id)) {
-                            selectProject(id, name);
+                            // Poi controlla se ci sono più di un progetto e aggiungi l'opzione "All"
+                            const projectElements = projectsList.querySelectorAll('.project-item');
+                            if (projectElements.length > 1) {
+                                const allOption = document.createElement('div');
+                                allOption.className = 'project-item';
+                                allOption.id = 'project-all';
+                                allOption.dataset.projectId = 'all';
+                                allOption.innerHTML = `
+                                    <div class="project-content">All</div>
+                                `;
+                                allOption.addEventListener('click', () => selectProject('all', 'All'));
+                                projectsList.insertBefore(allOption, projectsList.firstChild);
+                            }
+
+                            // Carica l'ultimo progetto selezionato
+                            const lastProject = localStorage.getItem('lastSelectedProject');
+                            if (lastProject) {
+                                const { id, name } = JSON.parse(lastProject);
+                                // Verifica che il progetto esista ancora
+                                if (id === 'all' || data.some(project => project.id === id)) {
+                                    selectProject(id, name);
+                                }
+                            }
                         }
                     }
+                } else {
+                    // Se non ci sono progetti, resetta la selezione
+                    currentProjectId = null;
+                    document.getElementById('currentProjectName').textContent = 'Select Project';
+                    document.getElementById('taskList').innerHTML = '';
+                    localStorage.removeItem('lastSelectedProject');
                 }
             } catch (error) {
                 console.error('Errore nel caricamento dei progetti:', error);
@@ -543,11 +600,16 @@
             }
 
             try {
-                const { data, error } = await supabase
+                let query = supabase
                     .from('tasks')
                     .select('*')
-                    .eq('project_id', currentProjectId)
                     .order('created_at', { ascending: false });
+
+                if (currentProjectId !== 'all') {
+                    query = query.eq('project_id', currentProjectId);
+                }
+
+                const { data, error } = await query;
 
                 if (error) throw error;
 

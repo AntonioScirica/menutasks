@@ -121,10 +121,31 @@ h1 {
     background-color: #323235;
 }
 
+/* Stile per gli elementi task durante il trascinamento */
 .task-item.dragging {
-    opacity: 0.5;
-    background-color: #323235;
-    z-index: 100;
+    opacity: 0.9;
+    box-shadow: 0 5px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    background-color: #27272A; /* Mantenere colore originale */
+}
+
+/* Stile per il container durante il trascinamento */
+.task-container.dragging-container {
+    opacity: 0.9;
+    z-index: 1000;
+    position: relative;
+    background-color: transparent; /* Trasparente per mostrare il colore dei figli */
+}
+
+/* Stile per garantire che le task nei container mantengano il loro colore originale durante il trascinamento */
+.task-container.dragging-container .task-item {
+    background-color: #27272A;
+}
+
+/* Nascondi il bordo tratteggiato durante il drag */
+.task-container.dragging-container:focus,
+.task-item.dragging:focus {
+    outline: none;
 }
 
 /* Stile per indicare che una task diventerà genitore durante il drag */
@@ -332,11 +353,12 @@ button:active {
     background-color: #27272A;
 }
 
-/* Task actions più compatto */
+/* Task actions più compatto e ben allineato */
 .task-actions {
     display: flex;
     align-items: center;
     gap: 5px;
+    position: relative;
 }
 
 /* Pulsante add-subtask a destra - temporaneamente disabilitato */
@@ -370,44 +392,40 @@ button:active {
     transform: rotate(-90deg);
 }
 
-.subtask-input-container {
-    display: none;
-    margin-left: 20px;
-    margin-top: 5px;
-    margin-bottom: 5px;
-}
-
-.subtask-input-container.visible {
-    display: flex;
-}
-
-.subtask-input {
+/* Task input con indicatore di priorità */
+.task-input-container {
+    position: relative;
     flex-grow: 1;
-    padding: 5px 8px;
-    border: 1px solid #393939;
+    width: 100%;
+}
+
+.task-input-container::before {
+    content: '';
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    bottom: 8px;
+    width: 3px;
     border-radius: 4px;
-    background-color: #18181A;
-    color: #fff;
-    font-size: 14px;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.2s;
 }
 
-/*Gruppo input e pulsante*/
-.input-group {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin: 0 8px 0px 8px; /* 8px dal fondo, 8px dai lati */
-    width: calc(100% - 16px);
-    gap: 8px;
-    box-sizing: border-box;
-    height: 56px;
+.task-input-container.priority-urgent::before {
+    background-color: #ff3b30;
+    opacity: 1;
 }
 
-.input-group input {
-    flex-grow: 1;
+.task-input-container.priority-medium::before {
+    background-color: #ffcc00;
+    opacity: 1;
 }
 
-/*Input task*/
+.task-input-container.priority-normal::before {
+    display: none;
+}
+
 .task-input {
     width: 100%;
     padding: 10px;
@@ -656,7 +674,7 @@ button:active {
     justify-content: center;
     flex-shrink: 0;
     background-color: transparent;
-    color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.5);
     border: 1px solid #393939;
     border-radius: 5px;
     font-size: 16px;
@@ -666,12 +684,12 @@ button:active {
 
 #confirmProjectButton:hover {
     background-color: transparent;
-    color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
 }
 
 #confirmProjectButton:active {
     background-color: transparent;
-    color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
 }
 
 /* Stile per il pulsante add-project */
@@ -1064,4 +1082,185 @@ button:active {
 #addTaskButton:active {
     background-color: #C95D4B !important;
     color: white !important;
+}
+
+/* Indicatore visivo per mostrare che una task ha subtask */
+.task-container.has-subtasks > .task-item {
+    position: relative;
+}
+
+/* Rimuovo il vecchio pallino indicatore */
+.task-container.has-subtasks > .task-item::after {
+    display: none;
+}
+
+/* Rimuovo lo stile per il pallino quando le subtask sono chiuse */
+.task-container.has-subtasks.collapsed > .task-item::after {
+    display: none;
+}
+
+/* Stile per il contatore di subtask nelle task chiuse */
+.subtask-counter {
+    position: absolute;
+    right: 12px; /* Esattamente 8px dal bordo destro */
+    top: 50%;
+    transform: translateY(-50%);
+    color: #C95D4B;
+    font-size: 14px;
+    font-weight: bold;
+    display: none;
+    z-index: 5;
+    background-color: transparent;
+    border-radius: 0;
+    height: auto;
+    min-width: auto;
+    padding: 0;
+}
+
+/* Mostro il contatore solo quando la task è chiusa */
+.task-container.has-subtasks.collapsed .subtask-counter {
+    display: block;
+}
+
+/* Modifico lo spazio per le icone quando il contatore è visibile */
+.task-container.has-subtasks.collapsed .task-actions {
+    margin-right: 20px; /* Spazio tra le icone e il contatore */
+}
+
+/* Mantiene il cursore pointer per le task con subtask */
+.task-container.has-subtasks > .task-item .task-content {
+    cursor: pointer;
+}
+
+/* Mantieni il cursore move sull'intero elemento task */
+.task-item {
+    cursor: move;
+}
+
+/* Nascosto il toggle button originale */
+.toggle-subtask {
+    display: none !important;
+}
+
+/* Rimuovo lo stile del vecchio selettore */
+.priority-select {
+    display: none;
+}
+
+/* Stile per il nuovo selettore di priorità orizzontale */
+.priority-selector {
+    display: none;
+    position: absolute;
+    align-items: center;
+    justify-content: center;
+    background-color: #27272A;
+    border-radius: 8px;
+    padding: 8px 12px;
+    gap: 12px;
+    top: -42px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    border: 1px solid #393939;
+}
+
+.priority-selector.visible {
+    display: flex;
+}
+
+.priority-option {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.2s;
+    opacity: 0.8;
+    border: none;
+    box-sizing: border-box;
+}
+
+.priority-option.priority-urgent {
+    background-color: #ff3b30;
+}
+
+.priority-option.priority-medium {
+    background-color: #ffcc00;
+}
+
+.priority-option.priority-normal {
+    background-color: #34c759;
+}
+
+.priority-option:hover {
+    transform: scale(1.1);
+    opacity: 1;
+}
+
+.priority-option.selected {
+    opacity: 1;
+    border: 2px solid white;
+}
+
+/* Indicatori visuali di priorità nelle task e subtask */
+.task-item.priority-urgent {
+    border-left: 3px solid #ff3b30;
+}
+
+.task-item.priority-medium {
+    border-left: 3px solid #ffcc00;
+}
+
+.task-item.priority-normal {
+    border-left: 3px solid #34c759;
+}
+
+/* Subtask con priorità - mantengono il colore ma più sottile */
+.subtask.priority-urgent {
+    border-left: 3px solid #ff3b30;
+}
+
+.subtask.priority-medium {
+    border-left: 3px solid #ffcc00;
+}
+
+.subtask.priority-normal {
+    border-left: 3px solid #34c759;
+}
+
+.subtask-input-container {
+    display: none;
+    margin-left: 20px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+.subtask-input-container.visible {
+    display: flex;
+}
+
+.subtask-input {
+    flex-grow: 1;
+    padding: 5px 8px;
+    border: 1px solid #393939;
+    border-radius: 4px;
+    background-color: #18181A;
+    color: #fff;
+    font-size: 14px;
+}
+
+/*Gruppo input e pulsante*/
+.input-group {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 8px 0px 8px; /* 8px dal fondo, 8px dai lati */
+    width: calc(100% - 16px);
+    gap: 8px;
+    box-sizing: border-box;
+    height: 56px;
+}
+
+.input-group input {
+    flex-grow: 1;
 }

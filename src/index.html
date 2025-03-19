@@ -50,7 +50,7 @@
             <div class="project-input-group" id="projectInputGroup">
                 <input type="text" id="projectInput" class="project-input" placeholder="Nuovo progetto...">
                 <button id="confirmProjectButton" onclick="toggleProjectInput()">
-                    <i data-lucide="plus"></i>
+                    <i data-lucide="x"></i>
                 </button>
             </div>
         </div>
@@ -63,7 +63,15 @@
             </div>
             <div class="">
                 <div class="input-group" id="taskInputGroup">
-                    <input type="text" id="taskInput" class="task-input" placeholder="Inserisci una nuova attività...">
+                    <div class="task-input-container">
+                        <div class="priority-selector">
+                            <div class="priority-option priority-urgent" data-priority="urgent" title="Urgente"></div>
+                            <div class="priority-option priority-medium" data-priority="medium" title="Media"></div>
+                            <div class="priority-option priority-normal" data-priority="normal" title="Normale"></div>
+                        </div>
+                        <input type="text" id="taskInput" class="task-input"
+                            placeholder="Inserisci una nuova attività...">
+                    </div>
                     <button id="addTaskButton" onclick="addTask()">
                         <i data-lucide="arrow-up"></i>
                     </button>
@@ -95,6 +103,7 @@
         let currentProjectId = null;
         let supabase = null;
         let projectToDelete = null;
+        let currentPriority = 'normal'; // Priorità di default
 
         // Credenziali di Supabase
         const SUPABASE_URL = 'https://lrchdpuvgitjzoeqeirj.supabase.co';
@@ -105,10 +114,12 @@
             // Aggiungi i gestori eventi per i pulsanti
             document.getElementById('addTaskButton').addEventListener('click', addTask);
             document.getElementById('addProjectButton').addEventListener('click', toggleProjectInput);
-            document.getElementById('confirmProjectButton').addEventListener('click', addProject);
             document.querySelector('.add-project-menu-button').addEventListener('click', () => {
                 toggleProjectInput();
             });
+
+            // Inizializza il selettore di priorità
+            initPrioritySelector();
 
             // Aggiungi supporto per premere Invio nei campi di input
             document.getElementById('taskInput').addEventListener('keypress', (e) => {
@@ -169,8 +180,8 @@
                 taskInput.disabled = false;
                 taskInputGroup.style.pointerEvents = 'auto';
                 taskList.style.pointerEvents = 'auto';
-                confirmButton.innerHTML = '<i data-lucide="plus"></i>';
-                lucide.createIcons();
+                // Ripulisco l'input quando chiudo
+                document.getElementById('projectInput').value = '';
             } else {
                 inputGroup.classList.add('visible');
                 addButton.style.display = 'none';
@@ -183,6 +194,7 @@
                 taskInput.disabled = true;
                 taskInputGroup.style.pointerEvents = 'none';
                 taskList.style.pointerEvents = 'none';
+                // Mostro l'icona X nel pulsante
                 confirmButton.innerHTML = '<i data-lucide="x"></i>';
                 lucide.createIcons();
             }
@@ -597,13 +609,30 @@
         let potentialParent = null;
 
         function handleDragStart(e) {
-            draggedTask = this;
+            const isSubtask = this.classList.contains('subtask');
+
+            if (isSubtask) {
+                // Se è una subtask, trascina solo l'elemento task
+                draggedTask = this;
+            } else {
+                // Se è una task principale, controlla se ha un container (dovrebbe sempre averlo)
+                const taskContainer = document.getElementById(`taskContainer-${this.dataset.taskId}`);
+                if (taskContainer) {
+                    // Trascina l'intero container invece che solo l'elemento task
+                    draggedTask = taskContainer;
+                    taskContainer.classList.add('dragging-container');
+                } else {
+                    // Fallback nel caso in cui il container non venga trovato
+                    draggedTask = this;
+                }
+            }
+
+            // Aggiungi la classe dragging all'elemento che viene visivamente trascinato
             this.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
 
             // Memorizza l'ID del genitore originale (se esiste)
             const taskId = this.dataset.taskId;
-            const isSubtask = this.classList.contains('subtask');
 
             // Salva i dati della task trascinata nell'evento dataTransfer
             const dragData = {
@@ -616,7 +645,14 @@
         }
 
         function handleDragEnd(e) {
+            // Rimuovi la classe dragging dall'elemento task
             this.classList.remove('dragging');
+
+            // Se è stata trascinata una task principale, rimuovi anche la classe dal container
+            const isSubtask = this.classList.contains('subtask');
+            if (!isSubtask && draggedTask && draggedTask.classList.contains('task-container')) {
+                draggedTask.classList.remove('dragging-container');
+            }
 
             // Rimuovi la classe di potenziale genitore da tutte le task
             document.querySelectorAll('.potential-parent').forEach(item => {
@@ -639,7 +675,7 @@
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
 
-            if (this === draggedTask) return;
+            if (!draggedTask || this === draggedTask) return;
 
             // Rimuovi la classe potential-parent da tutte le task
             if (potentialParent && potentialParent !== this) {
@@ -649,15 +685,21 @@
                 dragTargetTimeout = null;
             }
 
-            const rect = this.getBoundingClientRect();
-            const midY = rect.top + rect.height / 2;
+            // Se stiamo trascinando un container, otteniamo l'elemento task al suo interno
+            const draggedTaskItem = draggedTask.classList.contains('task-container')
+                ? draggedTask.querySelector('.task-item')
+                : draggedTask;
+
+            const isDraggedSubtask = draggedTaskItem.classList.contains('subtask');
             const isTaskItem = this.classList.contains('task-item');
-            const isDraggedSubtask = draggedTask.classList.contains('subtask');
 
             // Se non è una task draggabile o è una subtask, non fare nulla
             if (!isTaskItem || (this.classList.contains('subtask') && !isDraggedSubtask)) {
                 return;
             }
+
+            const rect = this.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
 
             // Se il mouse è sopra la task per un po', consideriamo questa task come potenziale genitore
             if (e.clientY > rect.top + 10 && e.clientY < rect.bottom - 10 && !this.classList.contains('subtask')) {
@@ -673,17 +715,29 @@
                 return;
             }
 
+            // Determina il container target per l'inserimento
+            let targetContainer;
+            if (this.classList.contains('subtask')) {
+                // Se è una subtask, inserisci nel suo contenitore parent
+                targetContainer = this.parentNode;
+            } else {
+                // Se è una task principale, trova la lista principale o il contenitore appropriato
+                targetContainer = this.closest('.task-container').parentNode;
+            }
+
             // Altrimenti, facciamo il normale comportamento di riordinamento
             if (e.clientY < midY) {
-                this.parentNode.insertBefore(draggedTask, this);
+                const targetElement = this.classList.contains('subtask') ? this : this.closest('.task-container');
+                targetContainer.insertBefore(draggedTask, targetElement);
             } else {
-                this.parentNode.insertBefore(draggedTask, this.nextSibling);
+                const targetElement = this.classList.contains('subtask') ? this : this.closest('.task-container');
+                targetContainer.insertBefore(draggedTask, targetElement.nextSibling);
             }
         }
 
         async function handleDrop(e) {
             e.preventDefault();
-            if (this === draggedTask) return;
+            if (!draggedTask || this === draggedTask) return;
 
             // Ottieni i dati della task trascinata
             let dragData;
@@ -691,7 +745,16 @@
                 dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
             } catch (error) {
                 console.error('Errore nel parsing dei dati trascinati:', error);
-                dragData = { taskId: draggedTask ? draggedTask.dataset.taskId : null };
+                const draggedTaskItem = draggedTask.classList.contains('task-container')
+                    ? draggedTask.querySelector('.task-item')
+                    : draggedTask;
+
+                if (!draggedTaskItem) {
+                    console.error('Elemento task non trovato');
+                    return;
+                }
+
+                dragData = { taskId: draggedTaskItem.dataset.taskId };
                 if (!dragData.taskId) {
                     console.error('Impossibile ottenere ID della task trascinata');
                     return;
@@ -741,10 +804,27 @@
                         return;
                     }
 
-                    // Aggiorna il parent_id nel database
+                    // Calcola la nuova posizione come l'ultima posizione tra le subtask del nuovo parent
+                    const { data: maxPositionData, error: maxPosError } = await supabase
+                        .from('tasks')
+                        .select('position')
+                        .eq('parent_id', parentId)
+                        .order('position', { ascending: false })
+                        .limit(1);
+
+                    if (maxPosError) throw maxPosError;
+
+                    const newPosition = maxPositionData && maxPositionData.length > 0
+                        ? maxPositionData[0].position + 1
+                        : 0;
+
+                    // Aggiorna il parent_id e la position nel database
                     const { error } = await supabase
                         .from('tasks')
-                        .update({ parent_id: parentId })
+                        .update({
+                            parent_id: parentId,
+                            position: newPosition
+                        })
                         .eq('id', draggedTaskId);
 
                     if (error) {
@@ -754,24 +834,34 @@
 
                     console.log('Database aggiornato con successo');
 
-                    // Salva un riferimento per sicurezza
-                    const draggedTaskElement = draggedTask;
+                    // Determinare se la task ha subtask in modo sicuro
+                    let hasSubtasks = false;
+                    try {
+                        // Se è una task principale
+                        const taskContainer = document.getElementById(`taskContainer-${draggedTaskId}`);
+                        if (taskContainer && taskContainer.classList.contains('has-subtasks')) {
+                            hasSubtasks = true;
+                        }
+                    } catch (domError) {
+                        console.log('Errore non critico nel controllo delle subtask:', domError);
+                    }
+
+                    // Rimuovi prima l'elemento dall'UI
+                    try {
+                        if (draggedTask.classList.contains('task-container')) {
+                            // Se è una task principale
+                            draggedTask.remove();
+                        } else if (draggedTask.classList.contains('subtask')) {
+                            // Se è una subtask
+                            draggedTask.remove();
+                        }
+                        console.log('Elemento rimosso dalla UI');
+                    } catch (removeError) {
+                        console.log('Errore non critico nella rimozione UI:', removeError);
+                    }
 
                     // Imposta draggedTask a null per evitare problemi quando si ricarica la vista
                     draggedTask = null;
-
-                    // Rimuovi l'elemento dalla UI
-                    if (draggedTaskElement) {
-                        if (draggedTaskElement.classList.contains('subtask')) {
-                            // Se è una subtask, rimuovila direttamente
-                            draggedTaskElement.remove();
-                        } else {
-                            // Se è una task principale, rimuovi l'intero container
-                            const taskContainer = document.getElementById(`taskContainer-${draggedTaskId}`);
-                            if (taskContainer) taskContainer.remove();
-                        }
-                        console.log('Elemento rimosso dalla UI');
-                    }
 
                     console.log('Ricarico le task...');
                     // Ricarica le task per garantire una visualizzazione coerente
@@ -779,7 +869,11 @@
                     console.log('Task ricaricate');
 
                     // Mostra un messaggio di successo
-                    showStatus('Task spostata come subtask', 'success');
+                    if (hasSubtasks) {
+                        showStatus('Task e relative subtask spostate', 'success');
+                    } else {
+                        showStatus('Task spostata come subtask', 'success');
+                    }
                 } catch (error) {
                     console.error('Dettagli errore:', error);
                     showStatus('Errore: ' + (error.message || 'Problema durante lo spostamento'), 'error');
@@ -792,16 +886,7 @@
                     }
                 }
             } else {
-                // Comportamento normale di riordinamento
-                const rect = this.getBoundingClientRect();
-                const midY = rect.top + rect.height / 2;
-
-                if (e.clientY < midY) {
-                    this.parentNode.insertBefore(draggedTask, this);
-                } else {
-                    this.parentNode.insertBefore(draggedTask, this.nextSibling);
-                }
-
+                // Comportamento normale di riordinamento già gestito nel dragOver
                 // Salva l'ordine delle task
                 saveTaskOrder();
             }
@@ -843,6 +928,14 @@
 
                     const subtaskIds = Array.from(subtasks).map(task => task.dataset.taskId);
                     localStorage.setItem(`subtaskOrder_${parentTaskId}`, JSON.stringify(subtaskIds));
+
+                    // Aggiorna anche le posizioni delle subtask nel database
+                    subtaskIds.forEach(async (subtaskId, index) => {
+                        await supabase
+                            .from('tasks')
+                            .update({ position: index })
+                            .eq('id', subtaskId);
+                    });
                 });
 
                 // Aggiorna anche le posizioni nel database per ogni task principale
@@ -995,7 +1088,7 @@
 
                     // Crea gli elementi task principali e le loro subtask
                     orderedTasks.forEach(task => {
-                        createTaskElement(task.id, task.content, null, subtasksMap.get(task.id));
+                        createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority);
                     });
 
                     // Salva l'ordine corrente
@@ -1030,9 +1123,14 @@
             try {
                 if (currentEditingTaskId !== null) {
                     // Logica per la modifica di una task esistente
+                    const priority = currentPriority;
+
                     const { error } = await supabase
                         .from('tasks')
-                        .update({ content: taskText })
+                        .update({
+                            content: taskText,
+                            priority: priority
+                        })
                         .eq('id', currentEditingTaskId);
 
                     if (error) throw error;
@@ -1041,6 +1139,11 @@
                     if (taskElement) {
                         const taskTextElement = taskElement.querySelector('.task-text');
                         taskTextElement.textContent = taskText;
+
+                        // Rimuovi le precedenti classi di priorità
+                        taskElement.classList.remove('priority-urgent', 'priority-medium', 'priority-normal');
+                        // Aggiungi la nuova classe di priorità
+                        taskElement.classList.add(`priority-${priority}`);
                     }
 
                     currentEditingTaskId = null;
@@ -1085,6 +1188,24 @@
                         newTask.parent_id = parentId;
                     }
 
+                    // Aggiungi la priorità selezionata (solo per task principali)
+                    if (!parentId) {
+                        newTask.priority = currentPriority;
+                    } else {
+                        // Ottieni la priorità dal genitore
+                        const { data: parentData, error: parentError } = await supabase
+                            .from('tasks')
+                            .select('priority')
+                            .eq('id', parentId)
+                            .single();
+
+                        if (!parentError && parentData && parentData.priority) {
+                            newTask.priority = parentData.priority;
+                        } else {
+                            newTask.priority = 'normal'; // Default per le subtask
+                        }
+                    }
+
                     const { data, error } = await supabase
                         .from('tasks')
                         .insert([newTask])
@@ -1095,7 +1216,7 @@
                     if (data && data.length > 0) {
                         if (parentId) {
                             // Se è una subtask, aggiungiamola al contenitore della task principale
-                            createTaskElement(data[0].id, taskText, parentId);
+                            createTaskElement(data[0].id, taskText, parentId, null, data[0].priority);
 
                             // Nascondi l'input della subtask
                             const subtaskInputContainer = document.getElementById(`subtaskInputContainer-${parentId}`);
@@ -1108,21 +1229,28 @@
                             if (parentContainer) {
                                 parentContainer.classList.add('has-subtasks');
 
-                                // Mostra il toggle se non è già visibile
-                                const toggleButton = parentContainer.querySelector('.toggle-subtask');
-                                if (toggleButton) {
-                                    toggleButton.style.display = 'flex';
-                                }
-
                                 // Assicurati che il contenitore delle subtask sia visibile
                                 const subtasksContainer = document.getElementById(`subtasksContainer-${parentId}`);
                                 if (subtasksContainer) {
                                     subtasksContainer.style.display = 'block';
                                 }
+
+                                // Aggiorna il contatore delle subtask
+                                const subtasks = document.querySelectorAll(`#subtasksContainer-${parentId} .task-item`);
+                                updateSubtaskCounter(parentId, subtasks.length + 1); // +1 per la nuova subtask
                             }
                         } else {
                             // Se è una task principale, creala normalmente
-                            createTaskElement(data[0].id, taskText);
+                            createTaskElement(data[0].id, taskText, null, null, data[0].priority);
+
+                            // Nascondi il selettore di priorità dopo la creazione
+                            const prioritySelector = document.querySelector('.priority-selector');
+                            if (prioritySelector) {
+                                prioritySelector.classList.remove('visible');
+                            }
+
+                            // Resetta la priorità a normal per la prossima task
+                            setPriority('normal');
                         }
                     }
                 }
@@ -1149,11 +1277,18 @@
             const taskContainer = document.getElementById(`taskContainer-${taskId}`);
             if (taskContainer) {
                 taskContainer.classList.toggle('collapsed');
+
+                // Aggiorna il contatore quando si chiude/apre
+                const hasSubtasks = taskContainer.classList.contains('has-subtasks');
+                if (hasSubtasks) {
+                    const subtasks = document.querySelectorAll(`#subtasksContainer-${taskId} .task-item`);
+                    updateSubtaskCounter(taskId, subtasks.length);
+                }
             }
         }
 
         // Crea un elemento task nell'interfaccia
-        function createTaskElement(taskId, taskText, parentId = null, subtasks = []) {
+        function createTaskElement(taskId, taskText, parentId = null, subtasks = [], priority = 'normal') {
             // Trova il contenitore appropriato in base a se è una subtask o una task principale
             let container;
             if (parentId) {
@@ -1174,8 +1309,9 @@
                 const taskContainer = document.createElement('div');
                 taskContainer.className = 'task-container';
                 taskContainer.id = `taskContainer-${taskId}`;
+                taskContainer.setAttribute('draggable', 'true');
+                taskContainer.dataset.taskId = taskId;
 
-                // Se ha subtask, aggiungi la classe appropriata
                 if (subtasks && subtasks.length > 0) {
                     taskContainer.classList.add('has-subtasks');
                 }
@@ -1192,6 +1328,34 @@
             taskElement.id = 'task-' + taskId;
             taskElement.dataset.taskId = taskId;
             taskElement.draggable = true;
+
+            // Applica la classe di priorità se fornita
+            if (priority) {
+                taskElement.classList.add(`priority-${priority}`);
+            } else {
+                // Se non è stata fornita, recupera la priorità dal database
+                (async function () {
+                    try {
+                        const { data, error } = await supabase
+                            .from('tasks')
+                            .select('priority')
+                            .eq('id', taskId)
+                            .single();
+
+                        if (error) throw error;
+
+                        if (data && data.priority) {
+                            taskElement.classList.add(`priority-${data.priority}`);
+                        } else {
+                            // Default a normal se non è impostata una priorità
+                            taskElement.classList.add('priority-normal');
+                        }
+                    } catch (error) {
+                        console.error('Errore nel recupero della priorità:', error);
+                    }
+                })();
+            }
+
             taskElement.addEventListener('dragstart', handleDragStart);
             taskElement.addEventListener('dragend', handleDragEnd);
             taskElement.addEventListener('dragover', handleDragOver);
@@ -1213,17 +1377,18 @@
             taskTextElement.textContent = taskText;
             taskContent.appendChild(taskTextElement);
 
-            // Se è una task principale e potrebbe avere subtask, aggiungi un toggle button a destra (ora nascosto)
+            // Se è una task principale, aggiungi il comportamento per aprire/chiudere le subtask
             if (!parentId) {
-                // Aggiungi il toggle button (nascosto tramite CSS)
-                const toggleButton = document.createElement('button');
-                toggleButton.className = 'toggle-subtask';
-                toggleButton.innerHTML = '<i data-lucide="chevron-down"></i>';
-                toggleButton.addEventListener('click', () => toggleSubtasks(taskId));
-                toggleButton.style.display = subtasks && subtasks.length > 0 ? 'flex' : 'none';
-                taskContent.appendChild(toggleButton);
+                // Aggiungiamo l'event listener al taskContent per aprire/chiudere le subtask
+                taskContent.addEventListener('click', (e) => {
+                    // Impedisci che il click raggiunga elementi annidati
+                    if (e.target === taskContent || e.target === taskTextElement || e.target === circleIcon || e.target.closest('.task-circle')) {
+                        toggleSubtasks(taskId);
+                        e.stopPropagation();
+                    }
+                });
 
-                // Se è una task principale, aggiungi il pulsante per aggiungere subtask a destra
+                // Aggiungi il pulsante per aggiungere subtask a destra (rimane nascosto nel CSS)
                 const addSubtaskButton = document.createElement('button');
                 addSubtaskButton.className = 'add-subtask';
                 addSubtaskButton.innerHTML = '<i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>';
@@ -1266,10 +1431,21 @@
                 // Se è una task principale, aggiungila al container
                 container.appendChild(taskElement);
 
+                // Aggiungi il contatore delle subtask
+                const subtaskCounter = document.createElement('div');
+                subtaskCounter.className = 'subtask-counter';
+                subtaskCounter.id = `subtaskCounter-${taskId}`;
+                const subtaskCount = subtasks ? subtasks.length : 0;
+                subtaskCounter.textContent = subtaskCount.toString();
+
+                // Aggiungi il contatore alla task principale
+                taskElement.appendChild(subtaskCounter);
+
                 // Crea il contenitore per le subtask
                 const subtasksContainer = document.createElement('div');
                 subtasksContainer.className = 'subtasks-container';
                 subtasksContainer.id = `subtasksContainer-${taskId}`;
+
                 container.appendChild(subtasksContainer);
 
                 // Crea il contenitore per l'input di nuove subtask
@@ -1301,9 +1477,25 @@
                     // Ordina le subtask per posizione
                     const sortedSubtasks = [...subtasks].sort((a, b) => a.position - b.position);
                     sortedSubtasks.forEach(subtask => {
-                        createTaskElement(subtask.id, subtask.content, taskId);
+                        createTaskElement(subtask.id, subtask.content, taskId, null, subtask.priority);
                     });
+
+                    // Aggiorna il contatore delle subtask
+                    updateSubtaskCounter(taskId, sortedSubtasks.length);
                 }
+            }
+
+            // Controlla se rimangono altre subtask
+            const remainingSubtasks = document.querySelectorAll(`#subtasksContainer-${parentId} .task-item`);
+            if (remainingSubtasks.length === 0) {
+                // Se non ci sono più subtask, rimuovi la classe has-subtasks
+                const parentContainer = document.getElementById(`taskContainer-${parentId}`);
+                if (parentContainer) {
+                    parentContainer.classList.remove('has-subtasks');
+                }
+            } else {
+                // Aggiorna il contatore con il numero aggiornato di subtask
+                updateSubtaskCounter(parentId, remainingSubtasks.length);
             }
 
             lucide.createIcons();
@@ -1351,14 +1543,10 @@
                     // Controlla se rimangono altre subtask
                     const remainingSubtasks = document.querySelectorAll(`#subtasksContainer-${parentId} .task-item`);
                     if (remainingSubtasks.length === 0) {
-                        // Se non ci sono più subtask, nascondi il toggle e rimuovi la classe has-subtasks
+                        // Se non ci sono più subtask, rimuovi la classe has-subtasks
                         const parentContainer = document.getElementById(`taskContainer-${parentId}`);
                         if (parentContainer) {
                             parentContainer.classList.remove('has-subtasks');
-                            const toggleButton = parentContainer.querySelector('.toggle-subtask');
-                            if (toggleButton) {
-                                toggleButton.style.display = 'none';
-                            }
                         }
                     }
                 } else {
@@ -1377,7 +1565,7 @@
         }
 
         // Funzione per modificare un'attività
-        function editTask(taskId) {
+        async function editTask(taskId) {
             const taskElement = document.getElementById('task-' + taskId);
 
             if (taskElement) {
@@ -1388,6 +1576,26 @@
                 const taskInput = document.getElementById('taskInput');
                 taskInput.value = taskText;
                 taskInput.focus();
+
+                // Recupera la priorità della task dal database
+                try {
+                    const { data, error } = await supabase
+                        .from('tasks')
+                        .select('priority')
+                        .eq('id', taskId)
+                        .single();
+
+                    if (error) throw error;
+
+                    // Imposta la priorità corrente
+                    if (data && data.priority) {
+                        setPriority(data.priority);
+                    } else {
+                        setPriority('normal'); // Valore predefinito
+                    }
+                } catch (error) {
+                    console.error('Errore nel recupero della priorità:', error);
+                }
 
                 // Cambia l'icona del pulsante e salva l'ID dell'attività in modifica
                 const addButton = document.getElementById('addTaskButton');
@@ -1446,6 +1654,87 @@
                     statusElement.textContent = '';
                     statusElement.className = 'status-message';
                 }, 3000);
+            }
+        }
+
+        // Funzione per aggiornare il contatore delle subtask
+        function updateSubtaskCounter(taskId, count) {
+            const subtaskCounter = document.getElementById(`subtaskCounter-${taskId}`);
+            if (subtaskCounter) {
+                subtaskCounter.textContent = count.toString();
+
+                // Se non ci sono subtask, nascondi il contatore
+                if (count === 0) {
+                    const taskContainer = document.getElementById(`taskContainer-${taskId}`);
+                    if (taskContainer) {
+                        taskContainer.classList.remove('has-subtasks');
+                    }
+                }
+            }
+        }
+
+        // Inizializza il popup di selezione della priorità
+        function initPrioritySelector() {
+            const priorityOptions = document.querySelectorAll('.priority-option');
+            const prioritySelector = document.querySelector('.priority-selector');
+            const taskInput = document.getElementById('taskInput');
+
+            // Imposta la priorità di default
+            setPriority('normal');
+
+            // Mostra il selettore quando l'utente inizia a digitare nell'input principale
+            // e SOLO per l'input principale, non per le subtask
+            taskInput.addEventListener('input', () => {
+                if (taskInput.value.trim() !== '') {
+                    prioritySelector.classList.add('visible');
+                } else {
+                    prioritySelector.classList.remove('visible');
+                    // Resetta la priorità a "normal" quando il testo viene cancellato
+                    setPriority('normal');
+                }
+            });
+
+            // Nascondi il selettore quando l'input perde il focus
+            taskInput.addEventListener('blur', () => {
+                // Aggiungiamo un breve ritardo per permettere all'utente di cliccare un'opzione
+                setTimeout(() => {
+                    if (!prioritySelector.contains(document.activeElement)) {
+                        prioritySelector.classList.remove('visible');
+                    }
+                }, 200);
+            });
+
+            // Gestisci la selezione della priorità
+            priorityOptions.forEach(option => {
+                option.addEventListener('click', () => {
+                    const priority = option.dataset.priority;
+                    setPriority(priority);
+                });
+            });
+        }
+
+        // Imposta la priorità corrente
+        function setPriority(priority) {
+            currentPriority = priority;
+
+            // Rimuovi la classe selected da tutte le opzioni
+            document.querySelectorAll('.priority-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+
+            // Aggiungi la classe selected all'opzione selezionata
+            const selectedOption = document.querySelector(`.priority-option.priority-${priority}`);
+            if (selectedOption) {
+                selectedOption.classList.add('selected');
+            }
+
+            // Aggiorna l'indicatore di priorità sul contenitore dell'input
+            const inputContainer = document.querySelector('.task-input-container');
+            if (inputContainer) {
+                // Rimuovi tutte le classi di priorità
+                inputContainer.classList.remove('priority-urgent', 'priority-medium', 'priority-normal');
+                // Aggiungi la classe di priorità corrente
+                inputContainer.classList.add(`priority-${priority}`);
             }
         }
 

@@ -1049,3 +1049,19 @@ button:active {
 .action-button.delete-button {
     display: none;
 }
+
+/* Aggiungo regola specifica per il pulsante di invio task */
+#addTaskButton {
+    background-color: #C95D4B !important;
+    color: white !important;
+}
+
+#addTaskButton:hover {
+    background-color: #C95D4B !important;
+    color: white !important;
+}
+
+#addTaskButton:active {
+    background-color: #C95D4B !important;
+    color: white !important;
+}

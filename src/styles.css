@@ -323,13 +323,13 @@ button.edit-icon:focus {
     transform: none !important;
 }
 
-/* Regola per tutti i button, ma con eccezione per delete-icon e edit-icon */
-button:not(.delete-icon):not(.edit-icon):hover {
-    background-color: #C95D4B;
+/* Regola per tutti i button, ma con eccezione per delete-icon */
+button:not(.delete-icon):hover {
+    background-color: #27272A;
 }
 
 button:active {
-    background-color: #C95D4B;
+    background-color: #27272A;
 }
 
 /* Task actions più compatto */
@@ -494,11 +494,11 @@ button svg {
 
 /* Regola per tutti i button, ma con eccezione per delete-icon */
 button:not(.delete-icon):hover {
-    background-color: #C95D4B;
+    background-color: #27272A;
 }
 
 button:active {
-    background-color: #C95D4B;
+    background-color: #27272A;
 }
 
 /*Messaggi di stato*/
@@ -674,8 +674,9 @@ button:active {
     color: rgba(255, 255, 255, 0.1);
 }
 
+/* Stile per il pulsante add-project */
 .add-project-button {
-    background: none;
+    background: transparent !important;
     border: none;
     color: #fff;
     padding: 0;
@@ -692,8 +693,14 @@ button:active {
     transform: translateY(-50%);
 }
 
+/* Rimuovo completamente l'effetto hover */
 .add-project-button:hover {
-    background: none;
+    background: transparent !important;
+}
+
+/* Rimuovo anche l'effetto attivo */
+.add-project-button:active {
+    background: transparent !important;
 }
 
 #currentProjectName {
@@ -1041,11 +1048,4 @@ button:active {
 .action-button.edit-button,
 .action-button.delete-button {
     display: none;
-}
-
-/* Stile per evidenziare quando si trascina una subtask sulla lista principale */
-.task-list.task-list-drop-target {
-    background-color: rgba(201, 93, 75, 0.1);
-    border: 2px dashed #C95D4B;
-    border-radius: 8px;
 }

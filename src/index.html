@@ -103,15 +103,7 @@
         // Inizializza l'interfaccia utente
         function initUI() {
             // Aggiungi i gestori eventi per i pulsanti
-            document.getElementById('addTaskButton').addEventListener('click', function () {
-                if (currentEditingTaskId !== null) {
-                    // Se stiamo modificando una task, richiama addTask per confermare la modifica
-                    addTask();
-                } else {
-                    // Altrimenti aggiungi una nuova task
-                    addTask();
-                }
-            });
+            document.getElementById('addTaskButton').addEventListener('click', addTask);
             document.getElementById('addProjectButton').addEventListener('click', toggleProjectInput);
             document.getElementById('confirmProjectButton').addEventListener('click', addProject);
             document.querySelector('.add-project-menu-button').addEventListener('click', () => {
@@ -631,9 +623,6 @@
                 item.classList.remove('potential-parent');
             });
 
-            // Rimuovi la classe task-list-drop-target dal task-list
-            document.getElementById('taskList').classList.remove('task-list-drop-target');
-
             // Resetta le variabili
             if (dragTargetTimeout) {
                 clearTimeout(dragTargetTimeout);
@@ -664,16 +653,6 @@
             const midY = rect.top + rect.height / 2;
             const isTaskItem = this.classList.contains('task-item');
             const isDraggedSubtask = draggedTask.classList.contains('subtask');
-            const isTaskList = this.id === 'taskList';
-
-            // Se l'elemento è la lista principale e stiamo trascinando una subtask,
-            // permettiamo il drop per convertirla in task principale
-            if (isTaskList && isDraggedSubtask) {
-                this.classList.add('task-list-drop-target');
-                return;
-            } else if (this.classList.contains('task-list-drop-target')) {
-                this.classList.remove('task-list-drop-target');
-            }
 
             // Se non è una task draggabile o è una subtask, non fare nulla
             if (!isTaskItem || (this.classList.contains('subtask') && !isDraggedSubtask)) {
@@ -721,58 +700,6 @@
 
             const taskId = dragData.taskId;
             const isTaskItem = this.classList.contains('task-item');
-            const isSubtask = draggedTask.classList.contains('subtask');
-            const droppedInTaskList = this.closest('#taskList') === document.getElementById('taskList') ||
-                this.id === 'taskList';
-
-            // Se una subtask viene trascinata nella lista principale, diventa una task principale
-            if (isSubtask && droppedInTaskList) {
-                try {
-                    console.log('Conversione da subtask a task principale:', { taskId });
-
-                    // Aggiorna il parent_id a null nel database
-                    const { error } = await supabase
-                        .from('tasks')
-                        .update({ parent_id: null })
-                        .eq('id', taskId);
-
-                    if (error) {
-                        console.error('Errore nell\'aggiornamento del database:', error);
-                        throw error;
-                    }
-
-                    console.log('Database aggiornato con successo');
-
-                    // Salva un riferimento per sicurezza
-                    const draggedTaskElement = draggedTask;
-
-                    // Imposta draggedTask a null per evitare problemi quando si ricarica la vista
-                    draggedTask = null;
-
-                    // Rimuovi l'elemento dalla UI
-                    if (draggedTaskElement) {
-                        draggedTaskElement.remove();
-                    }
-
-                    // Ricarica le task per garantire una visualizzazione coerente
-                    await loadTasks();
-
-                    // Mostra un messaggio di successo
-                    showStatus('Subtask convertita in task principale', 'success');
-                    return;
-                } catch (error) {
-                    console.error('Dettagli errore:', error);
-                    showStatus('Errore: ' + (error.message || 'Problema durante la conversione'), 'error');
-
-                    // Ricarica comunque le task per ripristinare lo stato coerente
-                    try {
-                        await loadTasks();
-                    } catch (loadError) {
-                        console.error('Errore anche nel ricaricare le task:', loadError);
-                    }
-                    return;
-                }
-            }
 
             // Se la task di destinazione ha la classe potential-parent e non è una subtask
             if (isTaskItem && this.classList.contains('potential-parent') && !this.classList.contains('subtask')) {

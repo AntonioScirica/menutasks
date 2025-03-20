@@ -806,6 +806,40 @@
             const isTaskItem = this.classList.contains('task-item');
             const hasSubtasks = dragData.hasSubtasks;
 
+            // Controllo se una subtask è stata rilasciata nella zona principale delle task
+            if (dragData.isSubtask && (this.id === 'taskList' || this === document.getElementById('taskList'))) {
+                // Una subtask è stata rilasciata nell'area principale: trasformala in task principale
+                try {
+                    console.log('Conversione di subtask in task principale:', taskId);
+
+                    // Aggiorna il database impostando parent_id a null
+                    const { error } = await supabase
+                        .from('tasks')
+                        .update({ parent_id: null })
+                        .eq('id', taskId);
+
+                    if (error) {
+                        console.error('Errore nell\'aggiornamento del database:', error);
+                        throw error;
+                    }
+
+                    // Ricarica le task per aggiornare l'interfaccia utente
+                    await loadTasks();
+
+                    // Mostra un messaggio di successo
+                    showStatus('Subtask convertita in task principale', 'success');
+
+                    // Rimuovi l'evidenziazione dall'area di drop
+                    document.getElementById('taskList').classList.remove('task-area-highlight');
+
+                    return;
+                } catch (error) {
+                    console.error('Errore durante la conversione della subtask:', error);
+                    showStatus('Errore: ' + (error.message || 'Problema durante la conversione'), 'error');
+                    return;
+                }
+            }
+
             // Se la task di destinazione ha la classe potential-parent e non è una subtask
             if (isTaskItem && this.classList.contains('potential-parent') && !this.classList.contains('subtask')) {
                 // Controlla se la task da spostare ha già delle subtask
@@ -1825,6 +1859,30 @@
                 }
             }
         }
+
+        // Aggiungi gli event listener per il taskList principale
+        document.addEventListener('DOMContentLoaded', function () {
+            // Aggiungi gli event listener dopo che il DOM è completamente caricato
+            const taskList = document.getElementById('taskList');
+
+            // Consenti il drop nella zona principale delle task
+            taskList.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+
+                // Evidenzia l'area quando si trascina una subtask sopra di essa
+                const draggedItem = document.querySelector('.dragging');
+                if (draggedItem && draggedItem.classList.contains('subtask')) {
+                    this.classList.add('task-area-highlight');
+                }
+            });
+
+            taskList.addEventListener('dragleave', function (e) {
+                this.classList.remove('task-area-highlight');
+            });
+
+            taskList.addEventListener('drop', handleDrop);
+        });
 
         // Inizializza l'app
         document.addEventListener('DOMContentLoaded', initUI);

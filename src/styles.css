@@ -399,31 +399,42 @@ button:active {
     width: 100%;
 }
 
+/* Rimuovo gli stili precedenti per la linea di priorità */
 .task-input-container::before {
-    content: '';
-    position: absolute;
-    right: 10px;
-    top: 10px;
-    bottom: 8px;
-    width: 3px;
-    border-radius: 4px;
-    z-index: 10;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-
-.task-input-container.priority-urgent::before {
-    background-color: #ff3b30;
-    opacity: 1;
-}
-
-.task-input-container.priority-medium::before {
-    background-color: #ffcc00;
-    opacity: 1;
-}
-
-.task-input-container.priority-normal::before {
     display: none;
+}
+
+/* Aggiorno gli stili per la linea divisoria */
+.task-input-divider {
+    position: absolute;
+    right: 35px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 20px;
+    background-color: #393939;
+    display: none;
+    z-index: 5;
+    border-radius: 24px;
+}
+
+/* Stili per la linea divisoria in base alla priorità */
+.task-input-container.priority-urgent .task-input-divider {
+    background-color: #ff3b30;
+}
+
+.task-input-container.priority-medium .task-input-divider {
+    background-color: #ffcc00;
+}
+
+/* Rimuovo lo stile per la priorità normale, così rimane grigia */
+.task-input-container.priority-normal .task-input-divider {
+    background-color: #393939;
+}
+
+/* Mostro la linea divisoria solo quando c'è testo nell'input */
+.task-input-container.has-text .task-input-divider {
+    display: block;
 }
 
 .task-input {
@@ -438,6 +449,29 @@ button:active {
     -moz-appearance: none;
     appearance: none;
     color: #fff;
+    position: relative;
+    padding-right: 35px; /* Spazio per l'icona plus a destra */
+}
+
+/* Icona plus all'interno dell'input */
+.task-input-plus-icon {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.5);
+    z-index: 5;
+}
+
+/* Mostro icona e divider solo quando c'è testo nell'input */
+.task-input-container.has-text .task-input-plus-icon,
+.task-input-container.has-text .task-input-divider {
+    display: flex;
 }
 
 .task-input:focus {
@@ -1159,7 +1193,7 @@ button:active {
     gap: 12px;
     top: -45px;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translateX(calc(-50% - 8px));
     z-index: 200;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     border: 1px solid #393939;

@@ -71,6 +71,10 @@
                         </div>
                         <input type="text" id="taskInput" class="task-input"
                             placeholder="Inserisci una nuova attività...">
+                        <div class="task-input-divider"></div>
+                        <div class="task-input-plus-icon">
+                            <i data-lucide="plus"></i>
+                        </div>
                     </div>
                     <button id="addTaskButton" onclick="addTask()">
                         <i data-lucide="arrow-up"></i>
@@ -120,6 +124,17 @@
 
             // Inizializza il selettore di priorità
             initPrioritySelector();
+
+            // Gestisce l'icona plus nell'input delle task
+            const taskInput = document.getElementById('taskInput');
+            taskInput.addEventListener('input', function () {
+                const taskInputContainer = this.closest('.task-input-container');
+                if (this.value.trim() !== '') {
+                    taskInputContainer.classList.add('has-text');
+                } else {
+                    taskInputContainer.classList.remove('has-text');
+                }
+            });
 
             // Aggiungi supporto per premere Invio nei campi di input
             document.getElementById('taskInput').addEventListener('keypress', (e) => {
@@ -1687,8 +1702,10 @@
             taskInput.addEventListener('input', () => {
                 if (taskInput.value.trim() !== '') {
                     prioritySelector.classList.add('visible');
+                    taskInput.closest('.task-input-container').classList.add('has-text');
                 } else {
                     prioritySelector.classList.remove('visible');
+                    taskInput.closest('.task-input-container').classList.remove('has-text');
                     // Resetta la priorità a "normal" quando il testo viene cancellato
                     setPriority('normal');
                 }
@@ -1735,6 +1752,20 @@
                 inputContainer.classList.remove('priority-urgent', 'priority-medium', 'priority-normal');
                 // Aggiungi la classe di priorità corrente
                 inputContainer.classList.add(`priority-${priority}`);
+            }
+
+            // Rimetti il focus sull'input e verifica la presenza di testo
+            const taskInput = document.getElementById('taskInput');
+            if (taskInput) {
+                // Riporta il focus sull'input
+                taskInput.focus();
+
+                // Verifica se c'è del testo nell'input per mostrare/nascondere l'icona plus e la linea
+                if (taskInput.value.trim() !== '') {
+                    inputContainer.classList.add('has-text');
+                } else {
+                    inputContainer.classList.remove('has-text');
+                }
             }
         }
 

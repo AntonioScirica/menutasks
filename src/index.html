@@ -47,6 +47,10 @@
                 <i data-lucide="plus"></i>
                 Add Project
             </button>
+            <button class="completed-tasks-button" id="completedTasksButton">
+                <i data-lucide="check-circle"></i>
+                Task completate <span class="completed-count" id="completedCount">0</span>
+            </button>
             <div class="project-input-group" id="projectInputGroup">
                 <input type="text" id="projectInput" class="project-input" placeholder="Nuovo progetto...">
                 <button id="confirmProjectButton" onclick="toggleProjectInput()">
@@ -58,6 +62,9 @@
             <div class="tasks_container">
                 <div class="task-list" id="taskList">
                     <!-- Le attività verranno visualizzate qui -->
+                </div>
+                <div class="task-list completed-tasks-list" id="completedTasksList" style="display: none;">
+                    <!-- Le attività completate verranno visualizzate qui -->
                 </div>
                 <div class="status-message" id="statusMessage"></div>
             </div>
@@ -108,6 +115,7 @@
         let supabase = null;
         let projectToDelete = null;
         let currentPriority = 'normal'; // Priorità di default
+        let showCompletedTasks = false; // Per gestire la visibilità delle task completate
 
         // Credenziali di Supabase
         const SUPABASE_URL = 'https://lrchdpuvgitjzoeqeirj.supabase.co';
@@ -121,6 +129,9 @@
             document.querySelector('.add-project-menu-button').addEventListener('click', () => {
                 toggleProjectInput();
             });
+
+            // Aggiungi il gestore per il pulsante delle task completate
+            document.getElementById('completedTasksButton').addEventListener('click', toggleCompletedTasks);
 
             // Inizializza il selettore di priorità
             initPrioritySelector();
@@ -823,7 +834,7 @@
                         throw error;
                     }
 
-                    // Ricarica le task per aggiornare l'interfaccia utente
+                    // Ricarica le task per aggiornare l'interfaccia
                     await loadTasks();
 
                     // Mostra un messaggio di successo
@@ -1072,11 +1083,14 @@
             }
         }
 
-        // Modifica la funzione loadTasks per caricare anche le subtask
+        // Modifica la funzione loadTasks per caricare anche le task completate
         async function loadTasks() {
             if (!currentProjectId) {
                 const taskList = document.getElementById('taskList');
+                const completedTasksList = document.getElementById('completedTasksList');
                 taskList.innerHTML = '';
+                completedTasksList.innerHTML = '';
+                document.getElementById('completedTasksHeader').style.display = 'none';
                 return;
             }
 
@@ -1092,7 +1106,9 @@
                 if (error) throw error;
 
                 const taskList = document.getElementById('taskList');
+                const completedTasksList = document.getElementById('completedTasksList');
                 taskList.innerHTML = '';
+                completedTasksList.innerHTML = '';
 
                 if (data && data.length > 0) {
                     // Separa le task principali dalle subtask
@@ -1194,12 +1210,11 @@
 
                     // Crea gli elementi task principali e le loro subtask
                     orderedTasks.forEach(task => {
-                        createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority);
+                        createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority, task.completed);
                     });
 
-                    // Salva l'ordine corrente
-                    const currentOrder = orderedTasks.map(task => task.id.toString());
-                    localStorage.setItem(`taskOrder_${currentProjectId}`, JSON.stringify(currentOrder));
+                    // Aggiorna il contatore delle task completate
+                    updateCompletedCounter();
                 }
             } catch (error) {
                 console.error('Errore nel caricamento delle attività:', error);
@@ -1322,7 +1337,7 @@
                     if (data && data.length > 0) {
                         if (parentId) {
                             // Se è una subtask, aggiungiamola al contenitore della task principale
-                            createTaskElement(data[0].id, taskText, parentId, null, data[0].priority);
+                            createTaskElement(data[0].id, taskText, parentId, null, data[0].priority, data[0].completed);
 
                             // Nascondi l'input della subtask
                             const subtaskInputContainer = document.getElementById(`subtaskInputContainer-${parentId}`);
@@ -1347,7 +1362,7 @@
                             }
                         } else {
                             // Se è una task principale, creala normalmente
-                            createTaskElement(data[0].id, taskText, null, null, data[0].priority);
+                            createTaskElement(data[0].id, taskText, null, null, data[0].priority, data[0].completed);
 
                             // Nascondi il selettore di priorità dopo la creazione
                             const prioritySelector = document.querySelector('.priority-selector');
@@ -1394,7 +1409,7 @@
         }
 
         // Crea un elemento task nell'interfaccia
-        function createTaskElement(taskId, taskText, parentId = null, subtasks = [], priority = 'normal') {
+        function createTaskElement(taskId, taskText, parentId = null, subtasks = [], priority = 'normal', completed = false) {
             // Trova il contenitore appropriato in base a se è una subtask o una task principale
             let container;
             if (parentId) {
@@ -1404,8 +1419,11 @@
                     console.error('Contenitore subtask non trovato per parent_id:', parentId);
                     return;
                 }
+            } else if (completed) {
+                // Se è una task completata principale, aggiungiamola alla lista delle task completate
+                container = document.getElementById('completedTasksList');
             } else {
-                // Questa è una task principale, aggiungiamola alla lista principale
+                // Questa è una task principale non completata, aggiungiamola alla lista principale
                 container = document.getElementById('taskList');
             }
 
@@ -1434,6 +1452,11 @@
             taskElement.id = 'task-' + taskId;
             taskElement.dataset.taskId = taskId;
             taskElement.draggable = true;
+
+            // Aggiungi la classe completed se necessario
+            if (completed) {
+                taskElement.classList.add('completed');
+            }
 
             // Applica la classe di priorità se fornita
             if (priority) {
@@ -1471,10 +1494,22 @@
             const taskContent = document.createElement('div');
             taskContent.className = 'task-content';
 
-            // Aggiungi l'icona cerchio a sinistra
+            // Aggiungi l'icona cerchio a sinistra (modificata per gestire lo stato completato)
             const circleIcon = document.createElement('div');
             circleIcon.className = 'task-circle';
-            circleIcon.innerHTML = '<i data-lucide="circle"></i>';
+
+            if (completed) {
+                circleIcon.innerHTML = '<i data-lucide="check-circle"></i>';
+            } else {
+                circleIcon.innerHTML = '<i data-lucide="circle"></i>';
+            }
+
+            // Aggiungi event listener per completare/ripristinare la task
+            circleIcon.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleTaskCompletion(taskId, !completed);
+            });
+
             taskContent.appendChild(circleIcon);
 
             // Crea l'elemento per il testo dell'attività
@@ -1583,7 +1618,7 @@
                     // Ordina le subtask per posizione
                     const sortedSubtasks = [...subtasks].sort((a, b) => a.position - b.position);
                     sortedSubtasks.forEach(subtask => {
-                        createTaskElement(subtask.id, subtask.content, taskId, null, subtask.priority);
+                        createTaskElement(subtask.id, subtask.content, taskId, null, subtask.priority, subtask.completed);
                     });
 
                     // Aggiorna il contatore delle subtask
@@ -1883,6 +1918,68 @@
 
             taskList.addEventListener('drop', handleDrop);
         });
+
+        // Funzione per mostrare/nascondere le task completate
+        function toggleCompletedTasks() {
+            const completedTasksList = document.getElementById('completedTasksList');
+            const completedButton = document.getElementById('completedTasksButton');
+
+            showCompletedTasks = !showCompletedTasks;
+
+            if (showCompletedTasks) {
+                completedTasksList.style.display = 'flex';
+                document.getElementById('taskList').style.display = 'none';
+                completedButton.classList.add('active');
+            } else {
+                completedTasksList.style.display = 'none';
+                document.getElementById('taskList').style.display = 'flex';
+                completedButton.classList.remove('active');
+            }
+        }
+
+        // Funzione per completare/ripristinare una task
+        async function toggleTaskCompletion(taskId, completedState) {
+            try {
+                // Aggiorna lo stato nel database
+                const { error } = await supabase
+                    .from('tasks')
+                    .update({ completed: completedState })
+                    .eq('id', taskId);
+
+                if (error) throw error;
+
+                // Ricarica le task per aggiornare l'interfaccia
+                await loadTasks();
+
+                if (completedState) {
+                    showStatus('Task completata', 'success');
+                } else {
+                    showStatus('Task ripristinata', 'info');
+                }
+
+            } catch (error) {
+                console.error('Errore durante l\'aggiornamento dello stato della task:', error);
+                showStatus('Errore: ' + (error.message || 'Problema durante l\'aggiornamento'), 'error');
+            }
+        }
+
+        // Funzione per aggiornare il contatore delle task completate
+        function updateCompletedCounter() {
+            const completedTasks = document.getElementById('completedTasksList').querySelectorAll('.task-container').length;
+            document.getElementById('completedCount').textContent = completedTasks.toString();
+
+            // Mostra/nascondi il contatore in base al numero di task completate
+            if (completedTasks > 0) {
+                document.getElementById('completedCount').style.display = 'inline-flex';
+            } else {
+                document.getElementById('completedCount').style.display = 'none';
+
+                // Se siamo nella vista delle task completate, torna alla vista normale
+                if (showCompletedTasks) {
+                    toggleCompletedTasks();
+                }
+            }
+        }
 
         // Inizializza l'app
         document.addEventListener('DOMContentLoaded', initUI);

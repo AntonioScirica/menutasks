@@ -1105,7 +1105,6 @@
                 const completedTasksList = document.getElementById('completedTasksList');
                 taskList.innerHTML = '';
                 completedTasksList.innerHTML = '';
-                document.getElementById('completedTasksHeader').style.display = 'none';
                 return;
             }
 
@@ -1139,7 +1138,12 @@
                         subtasksMap.get(subtask.parent_id).push(subtask);
                     });
 
-                    let orderedTasks = [...mainTasks];
+                    // Separa le task completate dalle non completate
+                    const activeTasks = mainTasks.filter(task => !task.completed);
+                    const completedTasks = mainTasks.filter(task => task.completed);
+
+                    // Ordina le task attive in base alla posizione o all'ordine salvato
+                    let orderedActiveTasks = [...activeTasks];
 
                     // Ottieni l'ordine salvato dal localStorage (solo per le task principali)
                     const savedOrder = localStorage.getItem(`taskOrder_${currentProjectId}`);
@@ -1149,34 +1153,34 @@
 
                         // Verifica che gli ID esistano ancora nei dati
                         const validOrderArray = orderArray.filter(id =>
-                            mainTasks.some(task => task.id.toString() === id.toString())
+                            activeTasks.some(task => task.id.toString() === id.toString())
                         );
 
                         if (validOrderArray.length > 0) {
                             // Mappa gli ID nell'ordine salvato ai task reali
                             const orderedTasksMap = new Map();
-                            mainTasks.forEach(task => {
+                            activeTasks.forEach(task => {
                                 orderedTasksMap.set(task.id.toString(), task);
                             });
 
                             // Ordina in base all'ordine salvato
-                            orderedTasks = validOrderArray
+                            orderedActiveTasks = validOrderArray
                                 .map(id => orderedTasksMap.get(id.toString()))
                                 .filter(Boolean);
 
                             // Aggiungi le task che non erano nell'ordine salvato
-                            const remainingTasks = mainTasks.filter(task =>
+                            const remainingTasks = activeTasks.filter(task =>
                                 !validOrderArray.includes(task.id.toString())
                             );
 
-                            orderedTasks = [...orderedTasks, ...remainingTasks];
+                            orderedActiveTasks = [...orderedActiveTasks, ...remainingTasks];
                         } else {
                             // Se l'ordine salvato non contiene ID validi, usa position
-                            orderedTasks.sort((a, b) => a.position - b.position);
+                            orderedActiveTasks.sort((a, b) => a.position - b.position);
                         }
                     } else {
                         // Se non c'è un ordine salvato, usa position
-                        orderedTasks.sort((a, b) => a.position - b.position);
+                        orderedActiveTasks.sort((a, b) => a.position - b.position);
                     }
 
                     // Per ogni task principale, ordina le sue subtask in base all'ordine salvato
@@ -1223,10 +1227,78 @@
                         }
                     });
 
-                    // Crea gli elementi task principali e le loro subtask
-                    orderedTasks.forEach(task => {
+                    // Crea gli elementi per le task attive
+                    orderedActiveTasks.forEach(task => {
                         createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority, task.completed);
                     });
+
+                    // Raggruppa le task completate per data di completamento
+                    if (completedTasks.length > 0) {
+                        // Ordina le task completate per data di completamento (più recenti prima)
+                        completedTasks.sort((a, b) => {
+                            // Se non c'è data di completamento, usa created_at o metti alla fine
+                            const dateA = a.completed_at ? new Date(a.completed_at) :
+                                (a.created_at ? new Date(a.created_at) : new Date(0));
+                            const dateB = b.completed_at ? new Date(b.completed_at) :
+                                (b.created_at ? new Date(b.created_at) : new Date(0));
+                            return dateB - dateA;
+                        });
+
+                        // Crea una mappa per raggruppare per data
+                        const tasksByDate = new Map();
+
+                        // Funzione per formattare la data in modo leggibile
+                        const formatDate = (dateStr) => {
+                            if (!dateStr) return 'Data sconosciuta';
+
+                            const date = new Date(dateStr);
+                            const today = new Date();
+                            const yesterday = new Date(today);
+                            yesterday.setDate(yesterday.getDate() - 1);
+
+                            // Formatta la data
+                            if (date.toDateString() === today.toDateString()) {
+                                return 'Oggi';
+                            } else if (date.toDateString() === yesterday.toDateString()) {
+                                return 'Ieri';
+                            } else {
+                                return date.toLocaleDateString('it-IT', {
+                                    weekday: 'long',
+                                    day: 'numeric',
+                                    month: 'long',
+                                    year: 'numeric'
+                                });
+                            }
+                        };
+
+                        // Raggruppa le task per data
+                        completedTasks.forEach(task => {
+                            const dateKey = task.completed_at ?
+                                formatDate(task.completed_at) : 'Data sconosciuta';
+
+                            if (!tasksByDate.has(dateKey)) {
+                                tasksByDate.set(dateKey, []);
+                            }
+
+                            tasksByDate.get(dateKey).push(task);
+                        });
+
+                        // Crea sezioni per ogni data
+                        tasksByDate.forEach((tasks, dateKey) => {
+                            // Crea intestazione della sezione solo se ci sono task per quella data
+                            if (tasks && tasks.length > 0) {
+                                const dateHeader = document.createElement('div');
+                                dateHeader.className = 'completed-date-header';
+                                dateHeader.textContent = dateKey;
+                                completedTasksList.appendChild(dateHeader);
+
+                                // Crea le task per questa data
+                                tasks.forEach(task => {
+                                    createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority, task.completed, task.completed_at);
+                                });
+                            }
+                        });
+                    }
 
                     // Aggiorna il contatore delle task completate
                     updateCompletedCounter();
@@ -1424,7 +1496,7 @@
         }
 
         // Crea un elemento task nell'interfaccia
-        function createTaskElement(taskId, taskText, parentId = null, subtasks = [], priority = 'normal', completed = false) {
+        function createTaskElement(taskId, taskText, parentId = null, subtasks = [], priority = 'normal', completed = false, completed_at = null) {
             // Trova il contenitore appropriato in base a se è una subtask o una task principale
             let container;
             if (parentId) {
@@ -1471,6 +1543,11 @@
             // Aggiungi la classe completed se necessario
             if (completed) {
                 taskElement.classList.add('completed');
+
+                // Se c'è una data di completamento, aggiungiamola come attributo data per styling
+                if (completed_at) {
+                    taskElement.dataset.completedAt = completed_at;
+                }
             }
 
             // Applica la classe di priorità se fornita
@@ -1680,6 +1757,15 @@
                     }
                 }
 
+                // Recupera le informazioni sulla task prima di eliminarla
+                const { data: taskInfo, error: taskInfoError } = await supabase
+                    .from('tasks')
+                    .select('completed, completed_at')
+                    .eq('id', taskId)
+                    .single();
+
+                if (taskInfoError) throw taskInfoError;
+
                 // Ora elimina la task
                 const { error } = await supabase
                     .from('tasks')
@@ -1711,10 +1797,18 @@
                     if (taskContainer) {
                         taskContainer.remove();
                     }
+
+                    // Controlla immediatamente se ci sono intestazioni da rimuovere
+                    if (taskInfo && taskInfo.completed) {
+                        checkAndRemoveEmptyHeaders();
+                    }
                 }
 
                 // Aggiorna l'ordine delle task
                 saveTaskOrder();
+
+                // Aggiorna il contatore delle task completate
+                updateCompletedCounter();
             } catch (error) {
                 console.error('Errore durante l\'eliminazione dell\'attività:', error);
             }
@@ -1952,16 +2046,58 @@
             }
         }
 
-        // Funzione per completare/ripristinare una task
+        // Funzione per controllare e rimuovere intestazioni di date senza task
+        function checkAndRemoveEmptyHeaders() {
+            const completedTasksList = document.getElementById('completedTasksList');
+            if (!completedTasksList) return;
+
+            // Trova tutte le intestazioni di date
+            const dateHeaders = completedTasksList.querySelectorAll('.completed-date-header');
+
+            dateHeaders.forEach(header => {
+                let nextElement = header.nextElementSibling;
+                let hasTasksUnderHeader = false;
+
+                // Verifica se ci sono task sotto questa intestazione
+                while (nextElement && !nextElement.classList.contains('completed-date-header')) {
+                    if (nextElement.classList.contains('task-container')) {
+                        hasTasksUnderHeader = true;
+                        break;
+                    }
+                    nextElement = nextElement.nextElementSibling;
+                }
+
+                // Se non ci sono task, rimuovi l'intestazione
+                if (!hasTasksUnderHeader) {
+                    header.remove();
+                }
+            });
+        }
+
+        // Modifica la funzione toggleTaskCompletion per chiamare checkAndRemoveEmptyHeaders
         async function toggleTaskCompletion(taskId, completedState) {
             try {
+                // Prepara i dati da aggiornare
+                const updateData = { completed: completedState };
+
+                // Se la task viene completata, aggiungi la data di completamento
+                if (completedState) {
+                    updateData.completed_at = new Date().toISOString();
+                } else {
+                    // Se la task viene ripristinata, rimuovi la data di completamento
+                    updateData.completed_at = null;
+                }
+
                 // Aggiorna lo stato nel database
                 const { error } = await supabase
                     .from('tasks')
-                    .update({ completed: completedState })
+                    .update(updateData)
                     .eq('id', taskId);
 
                 if (error) throw error;
+
+                // Controlla e rimuovi le intestazioni senza task
+                checkAndRemoveEmptyHeaders();
 
                 // Ricarica le task per aggiornare l'interfaccia
                 await loadTasks();
@@ -1975,6 +2111,86 @@
             } catch (error) {
                 console.error('Errore durante l\'aggiornamento dello stato della task:', error);
                 showStatus('Errore: ' + (error.message || 'Problema durante l\'aggiornamento'), 'error');
+            }
+        }
+
+        // Modifica la funzione deleteTask per chiamare checkAndRemoveEmptyHeaders
+        async function deleteTask(taskId, parentId = null) {
+            try {
+                // Prima controlla se ci sono subtask (se è una task principale)
+                if (!parentId) {
+                    const { data: subtasks, error: subtasksError } = await supabase
+                        .from('tasks')
+                        .select('id')
+                        .eq('parent_id', taskId);
+
+                    if (subtasksError) throw subtasksError;
+
+                    // Se ci sono subtask, eliminale prima
+                    if (subtasks && subtasks.length > 0) {
+                        for (const subtask of subtasks) {
+                            await supabase
+                                .from('tasks')
+                                .delete()
+                                .eq('id', subtask.id);
+                        }
+                    }
+                }
+
+                // Recupera le informazioni sulla task prima di eliminarla
+                const { data: taskInfo, error: taskInfoError } = await supabase
+                    .from('tasks')
+                    .select('completed, completed_at')
+                    .eq('id', taskId)
+                    .single();
+
+                if (taskInfoError) throw taskInfoError;
+
+                // Ora elimina la task
+                const { error } = await supabase
+                    .from('tasks')
+                    .delete()
+                    .eq('id', taskId);
+
+                if (error) throw error;
+
+                // Rimuovi l'elemento dall'interfaccia
+                if (parentId) {
+                    // Se è una subtask, rimuovi solo l'elemento task
+                    const taskElement = document.getElementById('task-' + taskId);
+                    if (taskElement) {
+                        taskElement.remove();
+                    }
+
+                    // Controlla se rimangono altre subtask
+                    const remainingSubtasks = document.querySelectorAll(`#subtasksContainer-${parentId} .task-item`);
+                    if (remainingSubtasks.length === 0) {
+                        // Se non ci sono più subtask, rimuovi la classe has-subtasks
+                        const parentContainer = document.getElementById(`taskContainer-${parentId}`);
+                        if (parentContainer) {
+                            parentContainer.classList.remove('has-subtasks');
+                        }
+                    }
+                } else {
+                    // Se è una task principale, rimuovi l'intero container
+                    const taskContainer = document.getElementById('taskContainer-' + taskId);
+                    if (taskContainer) {
+                        taskContainer.remove();
+                    }
+
+                    // Controlla immediatamente se ci sono intestazioni da rimuovere
+                    if (taskInfo && taskInfo.completed) {
+                        checkAndRemoveEmptyHeaders();
+                    }
+                }
+
+                // Aggiorna l'ordine delle task
+                saveTaskOrder();
+
+                // Aggiorna il contatore delle task completate
+                updateCompletedCounter();
+            } catch (error) {
+                console.error('Errore durante l\'eliminazione dell\'attività:', error);
             }
         }
 

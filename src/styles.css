@@ -1414,3 +1414,56 @@ button:active {
 .completed-tasks-button i {
     color: #C95D4B;
 }
+
+/* Stile per l'intestazione delle task completate per data */
+.completed-date-header {
+    padding: 12px 8px;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    text-transform: capitalize;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #393939;
+}
+
+/* Stile per l'ora di completamento */
+.task-completion-time {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+/* Stile per le task completate nella lista delle task completate */
+.completed-tasks-list .task-item.completed {
+    opacity: 0.8;
+    background-color: #27272A;
+}
+
+.completed-tasks-list .task-content {
+    justify-content: flex-start;
+}
+
+.completed-tasks-list .task-item:hover {
+    background-color: #2d2d30;
+}
+
+/* Nasconde i pulsanti di edit nelle task completate ma mantiene il pulsante delete */
+.completed-tasks-list .task-item .edit-icon {
+    display: none;
+}
+
+.completed-tasks-list .task-item .delete-icon {
+    opacity: 0;
+}
+
+.completed-tasks-list .task-item:hover .delete-icon {
+    opacity: 0.4;
+}
+
+/* Stile per la prima intestazione di data */
+.completed-date-header:first-child {
+    margin-top: 0;
+}

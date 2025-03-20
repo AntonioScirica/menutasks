@@ -627,8 +627,28 @@
             const isSubtask = this.classList.contains('subtask');
 
             if (isSubtask) {
-                // Se è una subtask, trascina solo l'elemento task
-                draggedTask = this;
+                // Se è una subtask, trova eventuali subtask correlate
+                const taskId = this.dataset.taskId;
+                const subtaskContainer = document.getElementById(`subtasksContainer-${taskId}`);
+
+                // Se questa subtask ha task figlie, trascina il suo contenitore
+                if (subtaskContainer && subtaskContainer.querySelectorAll('.task-item').length > 0) {
+                    // Crea un contenitore temporaneo per il trascinamento che include questa subtask e tutte le sue task figlie
+                    const tempContainer = document.createElement('div');
+                    tempContainer.className = 'temp-drag-container';
+                    tempContainer.appendChild(this.cloneNode(true));
+
+                    // Aggiungi tutte le task figlie al contenitore temporaneo
+                    Array.from(subtaskContainer.children).forEach(child => {
+                        tempContainer.appendChild(child.cloneNode(true));
+                    });
+
+                    // Usa questo contenitore temporaneo come elemento trascinato
+                    draggedTask = tempContainer;
+                } else {
+                    // Se è una subtask senza figlie, trascina solo l'elemento task
+                    draggedTask = this;
+                }
             } else {
                 // Se è una task principale, controlla se ha un container (dovrebbe sempre averlo)
                 const taskContainer = document.getElementById(`taskContainer-${this.dataset.taskId}`);
@@ -653,7 +673,9 @@
             const dragData = {
                 taskId: taskId,
                 isSubtask: isSubtask,
-                originalParentId: isSubtask ? this.closest('.task-container').id.replace('taskContainer-', '') : null
+                originalParentId: isSubtask ? this.closest('.task-container').id.replace('taskContainer-', '') : null,
+                hasSubtasks: isSubtask && document.getElementById(`subtasksContainer-${taskId}`) &&
+                    document.getElementById(`subtasksContainer-${taskId}`).querySelectorAll('.task-item').length > 0
             };
 
             e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
@@ -701,7 +723,7 @@
             }
 
             // Se stiamo trascinando un container, otteniamo l'elemento task al suo interno
-            const draggedTaskItem = draggedTask.classList.contains('task-container')
+            const draggedTaskItem = draggedTask.classList.contains('task-container') || draggedTask.classList.contains('temp-drag-container')
                 ? draggedTask.querySelector('.task-item')
                 : draggedTask;
 
@@ -760,7 +782,7 @@
                 dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
             } catch (error) {
                 console.error('Errore nel parsing dei dati trascinati:', error);
-                const draggedTaskItem = draggedTask.classList.contains('task-container')
+                const draggedTaskItem = draggedTask.classList.contains('task-container') || draggedTask.classList.contains('temp-drag-container')
                     ? draggedTask.querySelector('.task-item')
                     : draggedTask;
 
@@ -769,7 +791,11 @@
                     return;
                 }
 
-                dragData = { taskId: draggedTaskItem.dataset.taskId };
+                dragData = {
+                    taskId: draggedTaskItem.dataset.taskId,
+                    hasSubtasks: draggedTask.classList.contains('temp-drag-container')
+                };
+
                 if (!dragData.taskId) {
                     console.error('Impossibile ottenere ID della task trascinata');
                     return;
@@ -778,22 +804,24 @@
 
             const taskId = dragData.taskId;
             const isTaskItem = this.classList.contains('task-item');
+            const hasSubtasks = dragData.hasSubtasks;
 
             // Se la task di destinazione ha la classe potential-parent e non è una subtask
             if (isTaskItem && this.classList.contains('potential-parent') && !this.classList.contains('subtask')) {
+                // Controlla se la task da spostare ha già delle subtask
+                const draggedTaskElement = document.getElementById(`taskContainer-${taskId}`);
+                if (draggedTaskElement && draggedTaskElement.classList.contains('has-subtasks')) {
+                    // La task ha subtask, non permettere lo spostamento
+                    showStatus('Non è possibile spostare una task con subtask dentro un\'altra task', 'error');
+                    return;
+                }
+
                 const parentId = this.dataset.taskId;
                 const draggedTaskId = taskId;
 
                 if (!parentId || !draggedTaskId) {
                     console.error('ID mancante:', { parentId, draggedTaskId });
                     showStatus('Errore: ID mancante', 'error');
-                    return;
-                }
-
-                // Evita cicli (una task non può essere parent di se stessa)
-                if (parentId === draggedTaskId) {
-                    console.error('Una task non può essere parent di se stessa');
-                    showStatus('Operazione non consentita', 'error');
                     return;
                 }
 
@@ -817,6 +845,19 @@
                         console.error('Task non trovata nel database:', draggedTaskId);
                         showStatus('Task non trovata', 'error');
                         return;
+                    }
+
+                    // Se la task ha delle subtask, recuperale prima di spostarla
+                    let childTasks = [];
+                    if (hasSubtasks) {
+                        const { data: subtasks, error: subtasksError } = await supabase
+                            .from('tasks')
+                            .select('id')
+                            .eq('parent_id', draggedTaskId);
+
+                        if (!subtasksError && subtasks) {
+                            childTasks = subtasks.map(st => st.id);
+                        }
                     }
 
                     // Calcola la nuova posizione come l'ultima posizione tra le subtask del nuovo parent
@@ -847,15 +888,28 @@
                         throw error;
                     }
 
+                    // Se la task spostata aveva subtask, aggiorniamo la loro gerarchia
+                    if (childTasks.length > 0) {
+                        // Impostiamo il nuovo parent_id per tutte le task figlie
+                        for (let i = 0; i < childTasks.length; i++) {
+                            await supabase
+                                .from('tasks')
+                                .update({
+                                    parent_id: draggedTaskId
+                                })
+                                .eq('id', childTasks[i]);
+                        }
+                    }
+
                     console.log('Database aggiornato con successo');
 
                     // Determinare se la task ha subtask in modo sicuro
-                    let hasSubtasks = false;
+                    let hasVisibleSubtasks = hasSubtasks || false;
                     try {
                         // Se è una task principale
                         const taskContainer = document.getElementById(`taskContainer-${draggedTaskId}`);
                         if (taskContainer && taskContainer.classList.contains('has-subtasks')) {
-                            hasSubtasks = true;
+                            hasVisibleSubtasks = true;
                         }
                     } catch (domError) {
                         console.log('Errore non critico nel controllo delle subtask:', domError);
@@ -866,8 +920,11 @@
                         if (draggedTask.classList.contains('task-container')) {
                             // Se è una task principale
                             draggedTask.remove();
+                        } else if (draggedTask.classList.contains('temp-drag-container')) {
+                            // Se è un contenitore temporaneo per una subtask con figlie
+                            draggedTask.remove();
                         } else if (draggedTask.classList.contains('subtask')) {
-                            // Se è una subtask
+                            // Se è una subtask semplice
                             draggedTask.remove();
                         }
                         console.log('Elemento rimosso dalla UI');
@@ -884,7 +941,7 @@
                     console.log('Task ricaricate');
 
                     // Mostra un messaggio di successo
-                    if (hasSubtasks) {
+                    if (hasVisibleSubtasks) {
                         showStatus('Task e relative subtask spostate', 'success');
                     } else {
                         showStatus('Task spostata come subtask', 'success');

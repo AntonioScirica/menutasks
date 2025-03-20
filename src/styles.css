@@ -1157,7 +1157,7 @@ button:active {
     border-radius: 8px;
     padding: 8px 12px;
     gap: 12px;
-    top: -42px;
+    top: -45px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 200;
@@ -1172,7 +1172,7 @@ button:active {
 .priority-option {
     width: 20px;
     height: 20px;
-    border-radius: 50%;
+    border-radius: 16%;
     cursor: pointer;
     transition: transform 0.2s;
     opacity: 0.8;

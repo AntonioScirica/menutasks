@@ -25,5 +25,8 @@
     "mac": {
       "category": "public.app-category.utilities"
     }
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7"
   }
 }

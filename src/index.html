@@ -118,8 +118,8 @@
         let showCompletedTasks = false; // Per gestire la visibilità delle task completate
 
         // Credenziali di Supabase
-        const SUPABASE_URL = 'https://lrchdpuvgitjzoeqeirj.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxyY2hkcHV2Z2l0anpvZXFlaXJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyMzgxMjgsImV4cCI6MjA1NzgxNDEyOH0.fnfrPJYDGjKYNouCVEzfxMnF0N-AWmYtX0V8G_bOa58';
+        const SUPABASE_URL = window.env.SUPABASE_URL;
+        const SUPABASE_KEY = window.env.SUPABASE_KEY;
 
         // Inizializza l'interfaccia utente
         function initUI() {

@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
 const { menubar } = require('menubar');
 const path = require('path');
 require('electron-reload')(__dirname);
+require('dotenv').config();
 
 // Gestisce il comportamento quando l'app è pronta
 if (process.platform === 'darwin') {

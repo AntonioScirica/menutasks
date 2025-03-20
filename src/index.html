@@ -746,6 +746,15 @@
                 return;
             }
 
+            // Verifica che la task trascinata non sia la stessa su cui stiamo passando
+            const draggedTaskId = draggedTaskItem.dataset.taskId;
+            const targetTaskId = this.dataset.taskId;
+
+            // Se gli ID sono uguali, è la stessa task, quindi non permettiamo che diventi un potenziale genitore
+            if (draggedTaskId === targetTaskId) {
+                return;
+            }
+
             const rect = this.getBoundingClientRect();
             const midY = rect.top + rect.height / 2;
 
@@ -867,6 +876,12 @@
                 if (!parentId || !draggedTaskId) {
                     console.error('ID mancante:', { parentId, draggedTaskId });
                     showStatus('Errore: ID mancante', 'error');
+                    return;
+                }
+
+                // Verifica che non si stia tentando di rendere una task subtask di se stessa
+                if (parentId === draggedTaskId) {
+                    showStatus('Non è possibile rendere una task subtask di se stessa', 'error');
                     return;
                 }
 

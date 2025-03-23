@@ -65,12 +65,12 @@
                 <div class="info-item completed-button priority-filter" id="urgentFilter">
                     <i data-lucide="flame" class="urgent-icon icon-flame"></i>
                     <span>On Fire</span>
-                    <span class="info-value" id="urgentTasksCount">0</span>
+                    <span class="info-value" id="urgentTasksCount">5</span>
                 </div>
                 <div class="info-item completed-button priority-filter" id="mediumFilter">
                     <i data-lucide="alert-circle" class="medium-icon icon-alert-circle"></i>
                     <span>Pressure</span>
-                    <span class="info-value" id="mediumTasksCount">0</span>
+                    <span class="info-value" id="mediumTasksCount">10</span>
                 </div>
                 <div class="info-item completed-button priority-filter" id="basicFilter">
                     <i data-lucide="circle" class="basic-icon icon-circle"></i>
@@ -222,9 +222,6 @@
                     projectsContent.style.display = 'none';
                 }
             });
-
-            // Inizializza i contatori a zero
-            updateInfoStats([]);
         }
 
         // Aggiungi la funzione per gestire il dropdown
@@ -1201,13 +1198,10 @@
             const mins = totalMinutes % 60;
             document.getElementById('totalTime').textContent = `${days}d ${hours}h ${mins}m`;
 
-            // Filtra per escludere le task completate prima di contare per priorità
-            const activeTasks = tasks.filter(task => !task.completed);
-
-            // Aggiorna i contatori per priorità considerando solo le task attive
-            const urgentCount = activeTasks.filter(task => task.priority === 'urgent').length;
-            const mediumCount = activeTasks.filter(task => task.priority === 'medium').length;
-            const basicCount = activeTasks.filter(task => task.priority === 'normal').length;
+            // Aggiorna i contatori per priorità
+            const urgentCount = tasks.filter(task => task.priority === 'urgent').length;
+            const mediumCount = tasks.filter(task => task.priority === 'medium').length;
+            const basicCount = tasks.filter(task => task.priority === 'normal').length;
 
             document.getElementById('urgentTasksCount').textContent = urgentCount;
             document.getElementById('mediumTasksCount').textContent = mediumCount;
@@ -1239,192 +1233,188 @@
                 taskList.innerHTML = '';
                 completedTasksList.innerHTML = '';
 
-                // Assicuriamoci di resettare tutti i contatori quando non ci sono task
-                if (!data || data.length === 0) {
-                    updateInfoStats([]); // Resetta tutti i contatori a zero
-                    return;
-                }
+                if (data && data.length > 0) {
+                    // Aggiorna le statistiche con tutte le task
+                    updateInfoStats(data);
 
-                // Aggiorna le statistiche con tutte le task
-                updateInfoStats(data);
+                    // Separa le task principali dalle subtask
+                    const mainTasks = data.filter(task => !task.parent_id);
+                    const subtasks = data.filter(task => task.parent_id);
 
-                // Separa le task principali dalle subtask
-                const mainTasks = data.filter(task => !task.parent_id);
-                const subtasks = data.filter(task => task.parent_id);
+                    // Crea una mappa delle subtask per parent_id
+                    const subtasksMap = new Map();
+                    subtasks.forEach(subtask => {
+                        if (!subtasksMap.has(subtask.parent_id)) {
+                            subtasksMap.set(subtask.parent_id, []);
+                        }
+                        subtasksMap.get(subtask.parent_id).push(subtask);
+                    });
 
-                // Crea una mappa delle subtask per parent_id
-                const subtasksMap = new Map();
-                subtasks.forEach(subtask => {
-                    if (!subtasksMap.has(subtask.parent_id)) {
-                        subtasksMap.set(subtask.parent_id, []);
-                    }
-                    subtasksMap.get(subtask.parent_id).push(subtask);
-                });
+                    // Separa le task completate dalle non completate
+                    const activeTasks = mainTasks.filter(task => !task.completed);
+                    const completedTasks = mainTasks.filter(task => task.completed);
 
-                // Separa le task completate dalle non completate
-                const activeTasks = mainTasks.filter(task => !task.completed);
-                const completedTasks = mainTasks.filter(task => task.completed);
+                    // Ordina le task attive in base alla posizione o all'ordine salvato
+                    let orderedActiveTasks = [...activeTasks];
 
-                // Ordina le task attive in base alla posizione o all'ordine salvato
-                let orderedActiveTasks = [...activeTasks];
+                    // Ottieni l'ordine salvato dal localStorage (solo per le task principali)
+                    const savedOrder = localStorage.getItem(`taskOrder_${currentProjectId}`);
 
-                // Ottieni l'ordine salvato dal localStorage (solo per le task principali)
-                const savedOrder = localStorage.getItem(`taskOrder_${currentProjectId}`);
+                    if (savedOrder) {
+                        const orderArray = JSON.parse(savedOrder);
 
-                if (savedOrder) {
-                    const orderArray = JSON.parse(savedOrder);
-
-                    // Verifica che gli ID esistano ancora nei dati
-                    const validOrderArray = orderArray.filter(id =>
-                        activeTasks.some(task => task.id.toString() === id.toString())
-                    );
-
-                    if (validOrderArray.length > 0) {
-                        // Mappa gli ID nell'ordine salvato ai task reali
-                        const orderedTasksMap = new Map();
-                        activeTasks.forEach(task => {
-                            orderedTasksMap.set(task.id.toString(), task);
-                        });
-
-                        // Ordina in base all'ordine salvato
-                        orderedActiveTasks = validOrderArray
-                            .map(id => orderedTasksMap.get(id.toString()))
-                            .filter(Boolean);
-
-                        // Aggiungi le task che non erano nell'ordine salvato
-                        const remainingTasks = activeTasks.filter(task =>
-                            !validOrderArray.includes(task.id.toString())
+                        // Verifica che gli ID esistano ancora nei dati
+                        const validOrderArray = orderArray.filter(id =>
+                            activeTasks.some(task => task.id.toString() === id.toString())
                         );
 
-                        orderedActiveTasks = [...orderedActiveTasks, ...remainingTasks];
-                    } else {
-                        // Se l'ordine salvato non contiene ID validi, usa position
-                        orderedActiveTasks.sort((a, b) => a.position - b.position);
-                    }
-                } else {
-                    // Se non c'è un ordine salvato, usa position
-                    orderedActiveTasks.sort((a, b) => a.position - b.position);
-                }
+                        if (validOrderArray.length > 0) {
+                            // Mappa gli ID nell'ordine salvato ai task reali
+                            const orderedTasksMap = new Map();
+                            activeTasks.forEach(task => {
+                                orderedTasksMap.set(task.id.toString(), task);
+                            });
 
-                // Per ogni task principale, ordina le sue subtask in base all'ordine salvato
-                subtasksMap.forEach((taskSubtasks, parentId) => {
-                    // Controlla se esiste un ordine salvato per queste subtask
-                    const savedSubtaskOrder = localStorage.getItem(`subtaskOrder_${parentId}`);
+                            // Ordina in base all'ordine salvato
+                            orderedActiveTasks = validOrderArray
+                                .map(id => orderedTasksMap.get(id.toString()))
+                                .filter(Boolean);
 
-                    if (savedSubtaskOrder) {
-                        try {
-                            const orderArray = JSON.parse(savedSubtaskOrder);
-
-                            // Verifica che gli ID esistano ancora nelle subtask
-                            const validOrderArray = orderArray.filter(id =>
-                                taskSubtasks.some(task => task.id.toString() === id.toString())
+                            // Aggiungi le task che non erano nell'ordine salvato
+                            const remainingTasks = activeTasks.filter(task =>
+                                !validOrderArray.includes(task.id.toString())
                             );
 
-                            if (validOrderArray.length > 0) {
-                                // Mappa gli ID nell'ordine salvato alle subtask reali
-                                const orderedSubtasksMap = new Map();
-                                taskSubtasks.forEach(task => {
-                                    orderedSubtasksMap.set(task.id.toString(), task);
-                                });
-
-                                // Ordina in base all'ordine salvato
-                                const orderedSubtasks = validOrderArray
-                                    .map(id => orderedSubtasksMap.get(id.toString()))
-                                    .filter(Boolean);
-
-                                // Aggiungi le subtask che non erano nell'ordine salvato
-                                const remainingSubtasks = taskSubtasks.filter(task =>
-                                    !validOrderArray.includes(task.id.toString())
-                                );
-
-                                // Aggiorna la mappa con le subtask ordinate
-                                subtasksMap.set(parentId, [...orderedSubtasks, ...remainingSubtasks]);
-                            }
-                        } catch (error) {
-                            console.error('Errore nel parsing dell\'ordine delle subtask:', error);
-                            // In caso di errore, mantieni l'ordine predefinito
+                            orderedActiveTasks = [...orderedActiveTasks, ...remainingTasks];
+                        } else {
+                            // Se l'ordine salvato non contiene ID validi, usa position
+                            orderedActiveTasks.sort((a, b) => a.position - b.position);
                         }
                     } else {
-                        // Se non c'è un ordine salvato, ordina per position
-                        subtasksMap.set(parentId, [...taskSubtasks].sort((a, b) => a.position - b.position));
+                        // Se non c'è un ordine salvato, usa position
+                        orderedActiveTasks.sort((a, b) => a.position - b.position);
                     }
-                });
 
-                // Crea gli elementi per le task attive
-                orderedActiveTasks.forEach(task => {
-                    createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority, task.completed);
-                });
+                    // Per ogni task principale, ordina le sue subtask in base all'ordine salvato
+                    subtasksMap.forEach((taskSubtasks, parentId) => {
+                        // Controlla se esiste un ordine salvato per queste subtask
+                        const savedSubtaskOrder = localStorage.getItem(`subtaskOrder_${parentId}`);
 
-                // Raggruppa le task completate per data di completamento
-                if (completedTasks.length > 0) {
-                    // Ordina le task completate per data di completamento (più recenti prima)
-                    completedTasks.sort((a, b) => {
-                        // Se non c'è data di completamento, usa created_at o metti alla fine
-                        const dateA = a.completed_at ? new Date(a.completed_at) :
-                            (a.created_at ? new Date(a.created_at) : new Date(0));
-                        const dateB = b.completed_at ? new Date(b.completed_at) :
-                            (b.created_at ? new Date(b.created_at) : new Date(0));
-                        return dateB - dateA;
-                    });
+                        if (savedSubtaskOrder) {
+                            try {
+                                const orderArray = JSON.parse(savedSubtaskOrder);
 
-                    // Crea una mappa per raggruppare per data
-                    const tasksByDate = new Map();
+                                // Verifica che gli ID esistano ancora nelle subtask
+                                const validOrderArray = orderArray.filter(id =>
+                                    taskSubtasks.some(task => task.id.toString() === id.toString())
+                                );
 
-                    // Funzione per formattare la data in modo leggibile
-                    const formatDate = (dateStr) => {
-                        if (!dateStr) return 'Data sconosciuta';
+                                if (validOrderArray.length > 0) {
+                                    // Mappa gli ID nell'ordine salvato alle subtask reali
+                                    const orderedSubtasksMap = new Map();
+                                    taskSubtasks.forEach(task => {
+                                        orderedSubtasksMap.set(task.id.toString(), task);
+                                    });
 
-                        const date = new Date(dateStr);
-                        const today = new Date();
-                        const yesterday = new Date(today);
-                        yesterday.setDate(yesterday.getDate() - 1);
+                                    // Ordina in base all'ordine salvato
+                                    const orderedSubtasks = validOrderArray
+                                        .map(id => orderedSubtasksMap.get(id.toString()))
+                                        .filter(Boolean);
 
-                        // Formatta la data
-                        if (date.toDateString() === today.toDateString()) {
-                            return 'Oggi';
-                        } else if (date.toDateString() === yesterday.toDateString()) {
-                            return 'Ieri';
+                                    // Aggiungi le subtask che non erano nell'ordine salvato
+                                    const remainingSubtasks = taskSubtasks.filter(task =>
+                                        !validOrderArray.includes(task.id.toString())
+                                    );
+
+                                    // Aggiorna la mappa con le subtask ordinate
+                                    subtasksMap.set(parentId, [...orderedSubtasks, ...remainingSubtasks]);
+                                }
+                            } catch (error) {
+                                console.error('Errore nel parsing dell\'ordine delle subtask:', error);
+                                // In caso di errore, mantieni l'ordine predefinito
+                            }
                         } else {
-                            return date.toLocaleDateString('it-IT', {
-                                weekday: 'long',
-                                day: 'numeric',
-                                month: 'long',
-                                year: 'numeric'
-                            });
-                        }
-                    };
-
-                    // Raggruppa le task per data
-                    completedTasks.forEach(task => {
-                        const dateKey = task.completed_at ?
-                            formatDate(task.completed_at) : 'Data sconosciuta';
-
-                        if (!tasksByDate.has(dateKey)) {
-                            tasksByDate.set(dateKey, []);
-                        }
-
-                        tasksByDate.get(dateKey).push(task);
-                    });
-
-                    // Crea sezioni per ogni data
-                    tasksByDate.forEach((tasks, dateKey) => {
-                        // Crea intestazione della sezione solo se ci sono task per quella data
-                        if (tasks && tasks.length > 0) {
-                            const dateHeader = document.createElement('div');
-                            dateHeader.className = 'completed-date-header';
-                            dateHeader.textContent = dateKey;
-                            completedTasksList.appendChild(dateHeader);
-
-                            // Crea le task per questa data
-                            tasks.forEach(task => {
-                                createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority, task.completed, task.completed_at);
-                            });
+                            // Se non c'è un ordine salvato, ordina per position
+                            subtasksMap.set(parentId, [...taskSubtasks].sort((a, b) => a.position - b.position));
                         }
                     });
+
+                    // Crea gli elementi per le task attive
+                    orderedActiveTasks.forEach(task => {
+                        createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority, task.completed);
+                    });
+
+                    // Raggruppa le task completate per data di completamento
+                    if (completedTasks.length > 0) {
+                        // Ordina le task completate per data di completamento (più recenti prima)
+                        completedTasks.sort((a, b) => {
+                            // Se non c'è data di completamento, usa created_at o metti alla fine
+                            const dateA = a.completed_at ? new Date(a.completed_at) :
+                                (a.created_at ? new Date(a.created_at) : new Date(0));
+                            const dateB = b.completed_at ? new Date(b.completed_at) :
+                                (b.created_at ? new Date(b.created_at) : new Date(0));
+                            return dateB - dateA;
+                        });
+
+                        // Crea una mappa per raggruppare per data
+                        const tasksByDate = new Map();
+
+                        // Funzione per formattare la data in modo leggibile
+                        const formatDate = (dateStr) => {
+                            if (!dateStr) return 'Data sconosciuta';
+
+                            const date = new Date(dateStr);
+                            const today = new Date();
+                            const yesterday = new Date(today);
+                            yesterday.setDate(yesterday.getDate() - 1);
+
+                            // Formatta la data
+                            if (date.toDateString() === today.toDateString()) {
+                                return 'Oggi';
+                            } else if (date.toDateString() === yesterday.toDateString()) {
+                                return 'Ieri';
+                            } else {
+                                return date.toLocaleDateString('it-IT', {
+                                    weekday: 'long',
+                                    day: 'numeric',
+                                    month: 'long',
+                                    year: 'numeric'
+                                });
+                            }
+                        };
+
+                        // Raggruppa le task per data
+                        completedTasks.forEach(task => {
+                            const dateKey = task.completed_at ?
+                                formatDate(task.completed_at) : 'Data sconosciuta';
+
+                            if (!tasksByDate.has(dateKey)) {
+                                tasksByDate.set(dateKey, []);
+                            }
+
+                            tasksByDate.get(dateKey).push(task);
+                        });
+
+                        // Crea sezioni per ogni data
+                        tasksByDate.forEach((tasks, dateKey) => {
+                            // Crea intestazione della sezione solo se ci sono task per quella data
+                            if (tasks && tasks.length > 0) {
+                                const dateHeader = document.createElement('div');
+                                dateHeader.className = 'completed-date-header';
+                                dateHeader.textContent = dateKey;
+                                completedTasksList.appendChild(dateHeader);
+
+                                // Crea le task per questa data
+                                tasks.forEach(task => {
+                                    createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority, task.completed, task.completed_at);
+                                });
+                            }
+                        });
+                    }
+
+                    // Aggiorna il contatore delle task completate
+                    updateCompletedCounter();
                 }
-
-                // Aggiorna il contatore delle task completate
-                updateCompletedCounter();
             } catch (error) {
                 console.error('Errore nel caricamento delle attività:', error);
             }
@@ -2224,15 +2214,6 @@
 
                 if (error) throw error;
 
-                // Ottieni i dati aggiornati per questo specifico task
-                const { data: taskData, error: taskError } = await supabase
-                    .from('tasks')
-                    .select('*')
-                    .eq('id', taskId)
-                    .single();
-
-                if (taskError) throw taskError;
-
                 // Controlla e rimuovi le intestazioni senza task
                 checkAndRemoveEmptyHeaders();
 
@@ -2376,11 +2357,46 @@
         // Inizializza l'app
         document.addEventListener('DOMContentLoaded', initUI);
 
+        // Aggiungo gli event listener per gli elementi
+        document.addEventListener('DOMContentLoaded', () => {
+            // Event listener esistenti
+            document.querySelector('.add-project-menu-button').addEventListener('click', () => {
+                toggleProjectInput();
+            });
+            document.getElementById('completedTasksButton').addEventListener('click', toggleCompletedTasks);
+
+            // Aggiungo i nuovi event listener per i filtri di priorità
+            document.getElementById('urgentFilter').addEventListener('click', () => togglePriorityFilter('urgent'));
+            document.getElementById('mediumFilter').addEventListener('click', () => togglePriorityFilter('medium'));
+            document.getElementById('basicFilter').addEventListener('click', () => togglePriorityFilter('basic'));
+
+            // Altri event listener come prima...
+            // ... existing code ...
+        });
+
         // ... existing code ...
+
+        // Funzione per gestire il filtraggio per priorità
+        function togglePriorityFilter(priority) {
+            const filterButton = document.getElementById(priority + 'Filter');
+
+            // Inverti lo stato del filtro
+            activePriorityFilters[priority] = !activePriorityFilters[priority];
+
+            // Aggiorna l'aspetto del pulsante
+            if (activePriorityFilters[priority]) {
+                filterButton.classList.add('active');
+            } else {
+                filterButton.classList.remove('active');
+            }
+
+            // Applica i filtri
+            applyFilters();
+        }
+
         // Funzione per applicare tutti i filtri attivi
         function applyFilters() {
-            // Ottieni solo le task non completate dal taskList (escludendo le task completate)
-            const taskItems = document.querySelectorAll('#taskList .task-item:not(.completed)');
+            const taskItems = document.querySelectorAll('#taskList .task-item');
             const hasActiveFilters = Object.values(activePriorityFilters).some(value => value === true);
 
             taskItems.forEach(taskItem => {
@@ -2406,7 +2422,7 @@
                         taskItem.style.display = isVisible ? 'flex' : 'none';
                     }
                 } else {
-                    // Se non ci sono filtri attivi, mostra tutti gli elementi non completati
+                    // Se non ci sono filtri attivi, mostra tutti gli elementi
                     const container = taskItem.closest('.task-container');
                     if (container) {
                         container.style.display = 'block';
@@ -2417,24 +2433,6 @@
             });
         }
         // ... existing code ...
-
-        // Funzione per gestire il filtraggio per priorità
-        function togglePriorityFilter(priority) {
-            const filterButton = document.getElementById(priority + 'Filter');
-
-            // Inverti lo stato del filtro
-            activePriorityFilters[priority] = !activePriorityFilters[priority];
-
-            // Aggiorna l'aspetto del pulsante
-            if (activePriorityFilters[priority]) {
-                filterButton.classList.add('active');
-            } else {
-                filterButton.classList.remove('active');
-            }
-
-            // Applica i filtri
-            applyFilters();
-        }
     </script>
 </body>
 

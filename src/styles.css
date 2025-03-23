@@ -1484,7 +1484,7 @@ button:active {
     color: #6b6b6b;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin: 20px 0 10px 0;
+    margin: 20px 0 10px 8px;
     font-weight: normal;
 }
 
@@ -1547,30 +1547,93 @@ button:active {
 
 /* Rendo piccole solo le icone nella barra laterale, escluse quelle nei menu */
 .bar [data-lucide] {
-    width: 8px !important;
-    height: 8px !important;
     stroke-width: 1 !important;
 }
 
 /* Ripristina la dimensione normale per le icone nei menu dei progetti */
 .menu-button [data-lucide],
 .add-project-menu-button [data-lucide] {
-    width: 16px !important;
-    height: 16px !important;
     stroke-width: 1.5 !important;
 }
 
 /* Le icone nella sezione info in particolare */
 .info-container [data-lucide] {
-    width: 16px !important;
-    height: 16px !important;
     stroke-width: 1 !important;
 }
 
-/* Stile per le icone */
+/* Dimensioni specifiche per ogni tipo di icona */
+.icon-plus {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-check-circle {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-alarm-clock-check {
+    width: 18px !important;
+    height: 18px !important;
+}
+
+.icon-flame {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-alert-circle {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-circle {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-x {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-arrow-up {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-more-vertical {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-edit {
+    width: 14px !important;
+    height: 14px !important;
+}
+
+.icon-trash {
+    width: 14px !important;
+    height: 14px !important;
+}
+
+.icon-plus-circle {
+    width: 14px !important;
+    height: 14px !important;
+}
+
+.icon-edit-2 {
+    width: 14px !important;
+    height: 14px !important;
+}
+
+.icon-check {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+/* Stile per le icone nelle info */
 .info-item i {
-    width: auto;
-    height: auto;
     color: #fff;
     display: flex;
     align-items: center;

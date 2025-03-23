@@ -1506,12 +1506,6 @@ button:active {
 /* Stile per il bottone Completed (ex completedTasksButton) */
 .completed-button {
     cursor: pointer;
-    background-color: #27272A;
-    transition: background-color 0.2s;
-}
-
-.completed-button:hover {
-    background-color: #323235;
 }
 
 .completed-button.active {

@@ -164,6 +164,12 @@
             // Aggiungi il gestore per il bottone Completed
             document.getElementById('completedTasksButton').addEventListener('click', toggleCompletedTasks);
 
+            // Assicurati che la vista delle task completate sia disattivata all'avvio
+            showCompletedTasks = false;
+            document.getElementById('completedTasksList').style.display = 'none';
+            document.getElementById('taskList').style.display = 'flex';
+            document.getElementById('completedTasksButton').classList.remove('active');
+
             // Inizializza il selettore di priorità
             initPrioritySelector();
 

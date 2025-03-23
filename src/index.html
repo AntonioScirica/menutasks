@@ -47,10 +47,41 @@
                 <i data-lucide="plus"></i>
                 Add Project
             </button>
-            <button class="completed-tasks-button" id="completedTasksButton">
-                <i data-lucide="check-circle"></i>
-                Task completate <span class="completed-count" id="completedCount">0</span>
-            </button>
+
+            <!-- Sostituisco il pulsante task completate con la struttura informativa -->
+            <div class="info-container">
+                <!-- Sezione INFORMATIONS -->
+                <h3 class="info-header">INFORMATIONS</h3>
+                <div class="info-item completed-button" id="completedTasksButton">
+                    <i data-lucide="check-circle"></i>
+                    <span>Completed</span>
+                    <span class="info-value" id="completedCount">0</span>
+                </div>
+                <div class="info-item">
+                    <i data-lucide="clock"></i>
+                    <span>Total time</span>
+                    <span class="info-value" id="totalTime">3d 2h 10m</span>
+                </div>
+
+                <!-- Sezione PRIORITY -->
+                <h3 class="info-header">PRIORITY</h3>
+                <div class="info-item">
+                    <i data-lucide="flame" class="urgent-icon"></i>
+                    <span>On Fire</span>
+                    <span class="info-value" id="urgentTasksCount">5</span>
+                </div>
+                <div class="info-item">
+                    <i data-lucide="alert-circle" class="medium-icon"></i>
+                    <span>Pressure</span>
+                    <span class="info-value" id="mediumTasksCount">10</span>
+                </div>
+                <div class="info-item">
+                    <i data-lucide="circle" class="basic-icon"></i>
+                    <span>Chill</span>
+                    <span class="info-value" id="basicTasksCount">0</span>
+                </div>
+            </div>
+
             <div class="project-input-group" id="projectInputGroup">
                 <input type="text" id="projectInput" class="project-input" placeholder="Nuovo progetto...">
                 <button id="confirmProjectButton" onclick="toggleProjectInput()">
@@ -130,7 +161,7 @@
                 toggleProjectInput();
             });
 
-            // Aggiungi il gestore per il pulsante delle task completate
+            // Aggiungi il gestore per il bottone Completed
             document.getElementById('completedTasksButton').addEventListener('click', toggleCompletedTasks);
 
             // Inizializza il selettore di priorità
@@ -246,12 +277,19 @@
                     projectInput.value = '';
                     toggleProjectInput(); // Nascondi l'input dopo aver aggiunto il progetto
 
-                    // Nascondi il pulsante Add Project e mostra il container dei progetti
+                    // Nascondi il pulsante Add Project e mostra il container dei progetti e le informazioni
                     const addProjectButton = document.getElementById('addProjectButton');
                     const projectsContainer = document.querySelector('.projects-container');
+                    const infoContainer = document.querySelector('.info-container');
+
                     if (addProjectButton && projectsContainer) {
                         addProjectButton.style.display = 'none';
                         projectsContainer.classList.add('visible');
+
+                        // Assicurati che il contenitore info sia visibile
+                        if (infoContainer) {
+                            infoContainer.style.display = 'flex';
+                        }
                     }
 
                     // Seleziona automaticamente il progetto appena creato
@@ -483,7 +521,7 @@
                 // Se il progetto eliminato era quello selezionato, resetta la selezione
                 if (currentProjectId === projectId) {
                     currentProjectId = null;
-                    document.getElementById('currentProjectName').textContent = 'Select Project';
+                    document.getElementById('currentProjectName').textContent = '';
                     document.getElementById('taskList').innerHTML = '';
                     localStorage.removeItem('lastSelectedProject');
                 }
@@ -492,6 +530,7 @@
                 const projectsList = document.getElementById('projectsList');
                 const addProjectButton = document.getElementById('addProjectButton');
                 const projectsContainer = document.querySelector('.projects-container');
+                const infoContainer = document.querySelector('.info-container');
 
                 // Chiudi il menu dropdown
                 const menu = document.getElementById('menu-' + projectId);
@@ -506,7 +545,8 @@
                     // Se non ci sono più progetti, mostra il pulsante Add Project e nascondi il container
                     addProjectButton.style.display = 'flex';
                     projectsContainer.classList.remove('visible');
-                    document.getElementById('currentProjectName').textContent = 'Select Project';
+                    infoContainer.style.display = 'none'; // Nascondi il contenitore info
+                    document.getElementById('currentProjectName').textContent = '';
                     document.getElementById('taskList').innerHTML = ''; // Pulisci la lista delle task
 
                     // Rimuovi l'opzione "All" se presente
@@ -560,6 +600,13 @@
 
             // Carica le task del progetto
             await loadTasks();
+
+            // La funzione loadTasks si occupa già di aggiornare le statistiche
+            // Assicuriamoci che il contenitore info sia visibile
+            const infoContainer = document.querySelector('.info-container');
+            if (infoContainer) {
+                infoContainer.style.display = 'flex';
+            }
         }
 
         // Carica i progetti da Supabase
@@ -575,16 +622,22 @@
                 const projectsList = document.getElementById('projectsList');
                 const addProjectButton = document.getElementById('addProjectButton');
                 const projectsContainer = document.querySelector('.projects-container');
+                const infoContainer = document.querySelector('.info-container');
                 projectsList.innerHTML = '';
 
                 // Gestisci la visibilità del pulsante Add Project e del container dei progetti
                 if (addProjectButton && projectsContainer) {
                     if (!data || data.length === 0) {
+                        // Nascondi il container dei progetti e le info e mostra solo il pulsante di aggiunta
                         addProjectButton.style.display = 'flex';
                         projectsContainer.classList.remove('visible');
+                        infoContainer.style.display = 'none'; // Nascondi il contenitore info
+                        document.getElementById('currentProjectName').textContent = '';
                     } else {
+                        // Mostra i progetti e le informazioni
                         addProjectButton.style.display = 'none';
                         projectsContainer.classList.add('visible');
+                        infoContainer.style.display = 'flex'; // Mostra il contenitore info
 
                         // Prima crea tutti i progetti
                         if (data && data.length > 0) {
@@ -1098,13 +1151,56 @@
             }
         }
 
-        // Modifica la funzione loadTasks per caricare anche le task completate
+        // Funzione per aggiornare le statistiche nella sezione info
+        function updateInfoStats(tasks) {
+            if (!tasks || tasks.length === 0) {
+                // Se non ci sono task, imposta tutti i contatori a zero
+                document.getElementById('completedCount').textContent = '0';
+                document.getElementById('totalTime').textContent = '0d 0h 0m';
+                document.getElementById('urgentTasksCount').textContent = '0';
+                document.getElementById('mediumTasksCount').textContent = '0';
+                document.getElementById('basicTasksCount').textContent = '0';
+                return;
+            }
+
+            // Conta le task completate
+            const completedCount = tasks.filter(task => task.completed).length;
+            document.getElementById('completedCount').textContent = completedCount;
+
+            // Calcola il tempo totale (simulato con un calcolo semplice)
+            let totalMinutes = 0;
+            tasks.forEach(task => {
+                if (task.priority === 'urgent') {
+                    totalMinutes += 180; // 3 ore per task urgenti
+                } else if (task.priority === 'medium') {
+                    totalMinutes += 120; // 2 ore per task medie
+                } else {
+                    totalMinutes += 60; // 1 ora per task normali
+                }
+            });
+
+            // Converti minuti in giorni, ore e minuti
+            const days = Math.floor(totalMinutes / (24 * 60));
+            const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+            const mins = totalMinutes % 60;
+            document.getElementById('totalTime').textContent = `${days}d ${hours}h ${mins}m`;
+
+            // Aggiorna i contatori per priorità
+            const urgentCount = tasks.filter(task => task.priority === 'urgent').length;
+            const mediumCount = tasks.filter(task => task.priority === 'medium').length;
+            const basicCount = tasks.filter(task => task.priority === 'normal').length;
+
+            document.getElementById('urgentTasksCount').textContent = urgentCount;
+            document.getElementById('mediumTasksCount').textContent = mediumCount;
+            document.getElementById('basicTasksCount').textContent = basicCount;
+        }
+
+        // Carica le task da Supabase
         async function loadTasks() {
             if (!currentProjectId) {
-                const taskList = document.getElementById('taskList');
-                const completedTasksList = document.getElementById('completedTasksList');
-                taskList.innerHTML = '';
-                completedTasksList.innerHTML = '';
+                document.getElementById('taskList').innerHTML = '';
+                document.getElementById('completedTasksList').innerHTML = '';
+                updateInfoStats([]); // Aggiorna le statistiche con array vuoto
                 return;
             }
 
@@ -1125,6 +1221,9 @@
                 completedTasksList.innerHTML = '';
 
                 if (data && data.length > 0) {
+                    // Aggiorna le statistiche con tutte le task
+                    updateInfoStats(data);
+
                     // Separa le task principali dalle subtask
                     const mainTasks = data.filter(task => !task.parent_id);
                     const subtasks = data.filter(task => task.parent_id);
@@ -1359,6 +1458,9 @@
                     addButton.innerHTML = '<i data-lucide="arrow-up"></i>';
                     lucide.createIcons();
 
+                    // Aggiorna le statistiche dopo la modifica
+                    await refreshTaskStats();
+
                 } else {
                     // Ottieni la posizione massima delle task nel progetto
                     let positionQuery = supabase
@@ -1460,6 +1562,9 @@
                             // Resetta la priorità a normal per la prossima task
                             setPriority('normal');
                         }
+
+                        // Aggiorna le statistiche dopo aver aggiunto la task
+                        await refreshTaskStats();
                     }
                 }
 
@@ -2114,7 +2219,7 @@
             }
         }
 
-        // Modifica la funzione deleteTask per chiamare checkAndRemoveEmptyHeaders
+        // Modifica la funzione deleteTask per aggiornare le statistiche
         async function deleteTask(taskId, parentId = null) {
             try {
                 // Prima controlla se ci sono subtask (se è una task principale)
@@ -2187,10 +2292,34 @@
                 // Aggiorna l'ordine delle task
                 saveTaskOrder();
 
-                // Aggiorna il contatore delle task completate
+                // Aggiorna il contatore delle task completate e le statistiche
                 updateCompletedCounter();
+
+                // Ottieni tutte le task per aggiornare le statistiche
+                await refreshTaskStats();
             } catch (error) {
                 console.error('Errore durante l\'eliminazione dell\'attività:', error);
+            }
+        }
+
+        // Funzione per aggiornare le statistiche dopo modifiche alle task
+        async function refreshTaskStats() {
+            try {
+                // Ottieni tutte le task del progetto corrente
+                let query = supabase.from('tasks').select('*');
+
+                if (currentProjectId !== 'all') {
+                    query = query.eq('project_id', currentProjectId);
+                }
+
+                const { data, error } = await query;
+
+                if (error) throw error;
+
+                // Aggiorna le statistiche
+                updateInfoStats(data || []);
+            } catch (error) {
+                console.error('Errore durante l\'aggiornamento delle statistiche:', error);
             }
         }
 
@@ -2203,7 +2332,7 @@
             if (completedTasks > 0) {
                 document.getElementById('completedCount').style.display = 'inline-flex';
             } else {
-                document.getElementById('completedCount').style.display = 'none';
+                document.getElementById('completedCount').style.display = 'inline-flex'; // Modificato per mostrare sempre il contatore
 
                 // Se siamo nella vista delle task completate, torna alla vista normale
                 if (showCompletedTasks) {

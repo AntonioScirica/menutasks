@@ -1,0 +1,196 @@
+/* Task Item */
+.task-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 10px;
+    margin: 5px 0;
+    background-color: var(--color-surface-lighter);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-md);
+    cursor: move;
+    transition: background-color var(--transition-fast), box-shadow var(--transition-normal);
+    color: var(--color-text);
+}
+
+.task-item:hover {
+    background-color: var(--color-surface-highlight);
+}
+
+/* Stile per gli elementi task durante il trascinamento */
+.task-item.dragging {
+    opacity: 0.9;
+    box-shadow: var(--shadow-md);
+    z-index: 1000;
+    background-color: var(--color-surface-lighter);
+}
+
+/* Task Content */
+.task-content {
+    display: flex;
+    align-items: center;
+    flex-grow: 1;
+    justify-content: flex-start;
+}
+
+.task-text {
+    flex: 1;
+    margin-right: 0;
+    margin-left: 0;
+    padding-left: 0;
+    color: var(--color-text);
+    order: 1; /* Al centro */
+    max-width: 200px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    text-align: left;
+}
+
+/* Cerchio a sinistra della task */
+.task-circle {
+    background: none;
+    border: none;
+    cursor: default;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    margin-right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text);
+    font-size: 16px;
+    order: 0;
+}
+
+.task-circle i {
+    width: 14px;
+    height: 14px;
+    color: var(--color-border);
+    stroke-width: 1.5;
+}
+
+/* Task Actions */
+.task-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    position: relative;
+}
+
+/* Icone di azione (modifica, elimina) */
+.delete-icon,
+.edit-icon {
+    background: none !important;
+    border: none !important;
+    color: #555 !important;
+    cursor: pointer;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0 !important;
+    transition: opacity var(--transition-fast);
+}
+
+.task-item:hover .delete-icon,
+.task-item:hover .edit-icon {
+    opacity: 0.6 !important;
+}
+
+.delete-icon:hover,
+.edit-icon:hover {
+    opacity: 1 !important;
+    color: var(--color-text) !important;
+}
+
+/* Regola specifica per le icone che sovrascrive altre regole */
+button.delete-icon,
+button.edit-icon,
+button.delete-icon:hover,
+button.edit-icon:hover,
+button.delete-icon:active,
+button.edit-icon:active,
+button.delete-icon:focus,
+button.edit-icon:focus {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+/* Stile per le icone di azione */
+.delete-icon i,
+.edit-icon i {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.5;
+}
+
+/* Indicatori di priorità nelle task */
+.task-item.priority-urgent {
+    border-left: 3px solid var(--color-danger);
+}
+
+.task-item.priority-medium {
+    border-left: 3px solid var(--color-warning);
+}
+
+.task-item.priority-normal {
+    border-left: 3px solid var(--color-success);
+}
+
+/* Task completate */
+.task-item.completed {
+    opacity: 0.7;
+}
+
+.task-item.completed .task-text {
+    text-decoration: line-through;
+    color: var(--color-text-disabled);
+}
+
+/* Task container */
+.task-container {
+    margin-bottom: 0;
+}
+
+.task-container.has-subtasks {
+    margin-bottom: 0;
+}
+
+/* Contatore subtask */
+.subtask-counter {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-primary);
+    font-size: 14px;
+    font-weight: bold;
+    display: none;
+    z-index: 5;
+    background-color: transparent;
+    border-radius: 0;
+    height: auto;
+    min-width: auto;
+    padding: 0;
+}
+
+.task-container.has-subtasks.collapsed .subtask-counter {
+    display: block;
+}
+
+.task-container.has-subtasks.collapsed .task-actions {
+    margin-right: 20px;
+}
+
+/* Ora di completamento */
+.task-completion-time {
+    font-size: 12px;
+    color: var(--color-text-dim);
+    margin-left: 8px;
+    flex-shrink: 0;
+} 

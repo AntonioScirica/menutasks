@@ -1,0 +1,405 @@
+/* Progetti */
+.projects-list {
+    margin-top: 20px;
+    overflow-y: auto;
+    flex-grow: 1;
+    padding-bottom: 20px;
+}
+
+.project-item {
+    padding: 10px;
+    margin: 0;
+    background-color: transparent;
+    border-radius: 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--color-text);
+    height: 40px;
+    box-sizing: border-box;
+    transition: background-color var(--transition-fast);
+}
+
+.project-item:hover {
+    background-color: var(--color-surface-lighter);
+}
+
+.project-item.active {
+    background-color: var(--color-surface-lighter);
+    color: var(--color-text);
+}
+
+.project-item:last-child {
+    border-bottom: none;
+}
+
+.project-content {
+    flex: 1;
+    margin-right: 10px;
+}
+
+/* Menu dei progetti */
+.menu-button {
+    background: none;
+    border: none;
+    color: var(--color-text);
+    padding: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--border-radius-sm);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+    position: relative;
+}
+
+.project-item:hover .menu-button {
+    opacity: 1;
+}
+
+.menu-button:hover {
+    background: none;
+}
+
+/* Area invisibile per mantenere l'hover */
+.menu-button::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -8px;
+    width: 8px;
+    height: 100%;
+    background: transparent;
+    z-index: 1001;
+}
+
+/* Dropdown menu */
+.menu-dropdown {
+    position: fixed;
+    background-color: var(--color-surface-lighter);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-sm);
+    box-shadow: var(--shadow-sm);
+    z-index: 1000;
+    min-width: 150px;
+    width: 100%;
+    display: none;
+}
+
+.menu-button:hover .menu-dropdown {
+    display: block;
+}
+
+.menu-option {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text);
+    transition: background-color var(--transition-fast);
+}
+
+.menu-option i {
+    width: 14px;
+    height: 14px;
+}
+
+.menu-option:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.menu-option.delete {
+    color: var(--color-danger);
+}
+
+.menu-option.delete:hover {
+    background-color: rgba(255, 59, 48, 0.1);
+}
+
+/* Input per modifica progetto */
+.project-edit-input {
+    width: 100%;
+    padding: 5px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-size: inherit;
+}
+
+.project-edit-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+/* Container dei progetti */
+.projects-container {
+    position: relative;
+    width: 100%;
+    padding: var(--spacing-sm);
+    box-sizing: border-box;
+    display: none;
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+.projects-container.visible {
+    display: block;
+}
+
+/* Trigger per i progetti */
+.projects-trigger {
+    width: 100%;
+    padding: 10px;
+    background-color: var(--color-surface);
+    border: none;
+    border-radius: var(--border-radius-sm);
+    color: var(--color-text);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 40px;
+    box-sizing: border-box;
+    transition: background-color var(--transition-fast);
+}
+
+.projects-trigger:hover,
+.projects-container:hover .projects-trigger {
+    background-color: var(--color-surface-lighter);
+}
+
+.projects-trigger span {
+    flex: 1;
+    text-align: left;
+    margin-right: 8px;
+    line-height: 20px;
+    color: var(--color-text);
+}
+
+.projects-trigger i {
+    width: 20px;
+    height: 20px;
+    transition: transform var(--transition-fast);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Contenuto dei progetti */
+.projects-content {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 100%;
+    background-color: var(--color-background);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--border-radius-sm);
+    margin-left: 8px;
+    z-index: 1000;
+    box-shadow: none;
+    width: 200px;
+    max-height: calc(6 * 40px + 40px); /* Altezza di 6 progetti + altezza del label */
+    overflow-y: auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* Mostra il menu al passaggio del mouse */
+.projects-container:hover .projects-content {
+    display: block;
+}
+
+/* Area invisibile per mantenere l'hover */
+.projects-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -8px;
+    width: 8px;
+    height: 100%;
+    background: transparent;
+    z-index: 1001;
+}
+
+/* Nasconde la barra dello scroll */
+.projects-content::-webkit-scrollbar {
+    display: none;
+}
+
+.projects-content::before {
+    content: 'projects';
+    display: block;
+    padding: 8px 12px;
+    color: var(--color-text-dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    position: sticky;
+    top: 0;
+    background-color: var(--color-background);
+    z-index: 1;
+}
+
+/* Dropdown progetti attivo */
+.projects-dropdown.active .projects-dropdown-button {
+    background-color: var(--color-surface-lighter);
+    color: var(--color-text);
+}
+
+.projects-dropdown.active .projects-dropdown-button i {
+    transform: rotate(180deg);
+}
+
+.projects-dropdown.active .projects-dropdown-content {
+    display: block;
+}
+
+/* Divisore */
+.divider {
+    height: 1px;
+    background-color: var(--color-border-light);
+    margin: 0;
+}
+
+/* Pulsante aggiungi progetto nel menu */
+.add-project-menu-button {
+    padding: 10px;
+    background: none;
+    border: none;
+    color: var(--color-text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    font-size: 14px;
+    height: 40px;
+    box-sizing: border-box;
+    justify-content: flex-start;
+}
+
+.add-project-menu-button:hover {
+    background-color: var(--color-surface-lighter);
+}
+
+/* Input per l'aggiunta di un nuovo progetto */
+.project-input-group {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    margin-top: auto;
+    background-color: var(--color-surface);
+    height: 56px;
+    box-sizing: border-box;
+    width: 100%;
+    margin-bottom: 1px;
+    position: relative;
+}
+
+.project-input-group::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: 0px;
+    right: 0px;
+    height: 1px;
+    background-color: var(--color-border-light);
+}
+
+.project-input-group.visible {
+    display: flex;
+}
+
+.project-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-size: 16px;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    height: 40px;
+    width: calc(100% - 48px);
+    line-height: 20px;
+}
+
+.project-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(201, 93, 75, 0.2);
+}
+
+.project-input::placeholder {
+    color: var(--color-text-dimmer);
+}
+
+#confirmProjectButton {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background-color: transparent;
+    color: var(--color-text-dim);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-md);
+    font-size: 16px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+#confirmProjectButton:hover {
+    background-color: transparent;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+#confirmProjectButton:active {
+    background-color: transparent;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* Pulsante aggiungi progetto */
+.add-project-button {
+    background: transparent !important;
+    border: none;
+    color: var(--color-text);
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 56px;
+    box-sizing: border-box;
+    justify-content: center;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.add-project-button:hover {
+    background: transparent !important;
+}
+
+.add-project-button:active {
+    background: transparent !important;
+}
+
+#currentProjectName {
+    color: var(--color-text);
+} 

@@ -1,0 +1,200 @@
+/* Form e input */
+
+/* Input task */
+.task-input {
+    width: 100%;
+    padding: 10px;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    font-size: 16px;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    color: var(--color-text);
+    position: relative;
+    padding-right: 35px; /* Spazio per l'icona plus a destra */
+}
+
+.task-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(201, 93, 75, 0.2);
+}
+
+.task-input::placeholder {
+    color: var(--color-text-dimmer);
+}
+
+/* Container input con priorità */
+.task-input-container {
+    position: relative;
+    flex-grow: 1;
+    width: 100%;
+}
+
+/* Divisore nell'input */
+.task-input-divider {
+    position: absolute;
+    right: 35px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 20px;
+    background-color: var(--color-border);
+    display: none;
+    z-index: 5;
+    border-radius: 24px;
+}
+
+/* Stili per la linea divisoria in base alla priorità */
+.task-input-container.priority-urgent .task-input-divider {
+    background-color: var(--color-danger);
+}
+
+.task-input-container.priority-medium .task-input-divider {
+    background-color: var(--color-warning);
+}
+
+.task-input-container.priority-normal .task-input-divider {
+    background-color: var(--color-border);
+}
+
+/* Mostro la linea divisoria solo quando c'è testo nell'input */
+.task-input-container.has-text .task-input-divider {
+    display: block;
+}
+
+/* Icona plus all'interno dell'input */
+.task-input-plus-icon {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-dim);
+    z-index: 5;
+}
+
+/* Mostro icona quando c'è testo nell'input */
+.task-input-container.has-text .task-input-plus-icon {
+    display: flex;
+}
+
+/* Pulsanti principali */
+button {
+    background-color: var(--color-primary);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius-md);
+    font-size: 14px;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+button svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+/* Regola per tutti i button, ma con eccezione per delete-icon */
+button:not(.delete-icon):hover {
+    background-color: var(--color-surface-lighter);
+}
+
+button:active {
+    background-color: var(--color-surface-lighter);
+}
+
+/* Pulsante add task */
+#addTaskButton {
+    background-color: var(--color-primary) !important;
+    color: white !important;
+}
+
+#addTaskButton:hover {
+    background-color: var(--color-primary) !important;
+    color: white !important;
+}
+
+#addTaskButton:active {
+    background-color: var(--color-primary) !important;
+    color: white !important;
+}
+
+/* Selettore priorità */
+.priority-selector {
+    display: none;
+    position: absolute;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--color-surface-lighter);
+    border-radius: var(--border-radius-lg);
+    padding: 8px 12px;
+    gap: 12px;
+    top: -45px;
+    left: 50%;
+    transform: translateX(calc(-50% - 8px));
+    z-index: 200;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-border);
+}
+
+.priority-selector.visible {
+    display: flex;
+}
+
+.priority-option {
+    width: 20px;
+    height: 20px;
+    border-radius: 16%;
+    cursor: pointer;
+    transition: transform var(--transition-fast);
+    opacity: 0.8;
+    border: none;
+    box-sizing: border-box;
+}
+
+.priority-option.priority-urgent {
+    background-color: var(--color-danger);
+}
+
+.priority-option.priority-medium {
+    background-color: var(--color-warning);
+}
+
+.priority-option.priority-normal {
+    background-color: var(--color-success);
+}
+
+.priority-option:hover {
+    transform: scale(1.1);
+    opacity: 1;
+}
+
+.priority-option.selected {
+    opacity: 1;
+    border: 2px solid white;
+}
+
+/* Vecchio selettore nascosto */
+.priority-select {
+    display: none;
+}
+
+/* Pulsante add-subtask - nascosto */
+.add-subtask {
+    display: none !important;
+} 

@@ -71,7 +71,7 @@ body {
     background: linear-gradient(to bottom, rgba(24, 24, 26, 0), #18181A 60%);
     pointer-events: none;
     border-radius: 0 0 8px 8px;
-    z-index: 10;
+    z-index: 1;
 }
 
 h1 {
@@ -467,6 +467,7 @@ button:active {
     justify-content: center;
     color: rgba(255, 255, 255, 0.5);
     z-index: 5;
+    cursor: pointer;
 }
 
 /* Mostro icona e divider solo quando c'è testo nell'input */
@@ -1632,10 +1633,12 @@ button:active {
     height: 16px !important;
 }
 
-/* Stile per le icone nelle info */
+/* Stili per le icone nelle info */
 .info-item i {
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
 }
+
+/* Gli stili per il popup delle impostazioni task sono stati spostati in css/components/task-settings-popup.css */

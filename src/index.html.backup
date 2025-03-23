@@ -14,8 +14,6 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Link al file CSS esterno -->
     <link rel="stylesheet" href="styles.css?v=1.0">
-    <!-- Link al CSS del popup impostazioni -->
-    <link rel="stylesheet" href="css/components/task-settings-popup.css?v=1.0">
 </head>
 
 <body>
@@ -109,28 +107,10 @@
                         <input type="text" id="taskInput" class="task-input"
                             placeholder="Inserisci una nuova attività...">
                         <div class="task-input-divider"></div>
-                        <div class="task-input-plus-icon" id="taskSettingsIcon">
+                        <div class="task-input-plus-icon">
                             <i data-lucide="plus" class="icon-plus"></i>
-                            <div class="task-settings-popup" id="taskSettingsPopup">
-                                <h2>impostazioni</h2>
-                                <div class="settings-row">
-                                    <div class="settings-label">Tempo</div>
-                                    <div class="time-inputs">
-                                        <div class="time-input">
-                                            <input type="text" value="0">
-                                            <div class="time-unit">day</div>
-                                        </div>
-                                        <div class="time-input">
-                                            <input type="text" value="0">
-                                            <div class="time-unit">hour</div>
-                                        </div>
-                                        <div class="time-input">
-                                            <input type="text" value="00">
-                                            <div class="time-unit">min</div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="settings-divider"></div>
+                            <div class="task-settings-popup">
+                                <h2>IMPOSTAZIONI</h2>
                                 <div class="settings-row">
                                     <div class="settings-label">Timer</div>
                                     <label class="toggle-switch">
@@ -138,7 +118,6 @@
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
-                                <div class="settings-divider"></div>
                                 <div class="settings-row">
                                     <div class="settings-label">Giornaliero</div>
                                     <label class="toggle-switch">
@@ -146,9 +125,8 @@
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
-                                <div class="settings-divider"></div>
                                 <div class="settings-row add-description">
-                                    <div class="settings-label">+ Aggiungi descrizione</div>
+                                    <div class="settings-label">Aggiungi descrizione</div>
                                 </div>
                             </div>
                         </div>
@@ -2105,12 +2083,13 @@
             // Mostra il selettore quando l'utente inizia a digitare nell'input principale
             // e SOLO per l'input principale, non per le subtask
             taskInput.addEventListener('input', () => {
+                const taskInputContainer = taskInput.closest('.task-input-container');
                 if (taskInput.value.trim() !== '') {
                     prioritySelector.classList.add('visible');
-                    taskInput.closest('.task-input-container').classList.add('has-text');
+                    taskInputContainer.classList.add('has-text');
                 } else {
                     prioritySelector.classList.remove('visible');
-                    taskInput.closest('.task-input-container').classList.remove('has-text');
+                    taskInputContainer.classList.remove('has-text');
                     // Resetta la priorità a "normal" quando il testo viene cancellato
                     setPriority('normal');
                 }
@@ -2477,28 +2456,6 @@
             // Applica i filtri
             applyFilters();
         }
-
-        // Gestione del popup delle impostazioni task
-        document.addEventListener('DOMContentLoaded', function () {
-            const taskSettingsIcon = document.getElementById('taskSettingsIcon');
-            const taskSettingsPopup = document.getElementById('taskSettingsPopup');
-
-            // Click sull'icona plus per aprire/chiudere il popup
-            taskSettingsIcon.addEventListener('click', function (event) {
-                event.stopPropagation(); // Previene che il click si propaghi al document
-                taskSettingsPopup.classList.toggle('visible');
-            });
-
-            // Click sul popup non lo chiude
-            taskSettingsPopup.addEventListener('click', function (event) {
-                event.stopPropagation();
-            });
-
-            // Click ovunque nel documento chiude il popup
-            document.addEventListener('click', function () {
-                taskSettingsPopup.classList.remove('visible');
-            });
-        });
     </script>
 </body>
 

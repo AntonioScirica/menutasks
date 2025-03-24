@@ -25,15 +25,21 @@
             padding-top: 5px;
         }
 
+        .save-button-row {
+            justify-content: center;
+            padding: 10px 0;
+        }
+
         .settings-save-button {
             background-color: #C47162;
             color: white;
             border: none;
             border-radius: 4px;
-            padding: 6px 12px;
-            font-size: 12px;
+            padding: 8px 0;
+            font-size: 14px;
             cursor: pointer;
             transition: background-color 0.2s ease;
+            width: 100%;
         }
 
         .settings-save-button:hover {
@@ -160,22 +166,18 @@
                                     <div class="settings-label">Tempo</div>
                                     <div class="time-inputs">
                                         <div class="time-input">
-                                            <input type="text" id="taskDays" value="0">
+                                            <input type="text" id="taskDays" placeholder="0" value="">
                                             <div class="time-unit">giorni</div>
                                         </div>
                                         <div class="time-input">
-                                            <input type="text" id="taskHours" value="0">
+                                            <input type="text" id="taskHours" placeholder="0" value="">
                                             <div class="time-unit">ore</div>
                                         </div>
                                         <div class="time-input">
-                                            <input type="text" id="taskMinutes" value="00">
+                                            <input type="text" id="taskMinutes" placeholder="00" value="">
                                             <div class="time-unit">min</div>
                                         </div>
                                     </div>
-                                </div>
-                                <div class="settings-row time-save-row">
-                                    <button id="saveTimeSettings" class="settings-save-button">Salva</button>
-                                    <span id="timeSavedConfirmation" class="save-confirmation"></span>
                                 </div>
                                 <div class="settings-divider"></div>
                                 <div class="settings-row">
@@ -196,6 +198,10 @@
                                 <div class="settings-divider"></div>
                                 <div class="settings-row add-description">
                                     <div class="settings-label">+ Aggiungi descrizione</div>
+                                </div>
+                                <div class="settings-divider"></div>
+                                <div class="settings-row save-button-row">
+                                    <button id="saveTimeSettings" class="settings-save-button">Salva</button>
                                 </div>
                             </div>
                         </div>
@@ -1710,9 +1716,9 @@
                         await refreshTaskStats();
 
                         // Reset dei campi di input del tempo
-                        document.getElementById('taskDays').value = '0';
-                        document.getElementById('taskHours').value = '0';
-                        document.getElementById('taskMinutes').value = '00';
+                        document.getElementById('taskDays').value = '';
+                        document.getElementById('taskHours').value = '';
+                        document.getElementById('taskMinutes').value = '';
                     }
                 }
 
@@ -2570,6 +2576,27 @@
             taskSettingsIcon.addEventListener('click', function (event) {
                 event.stopPropagation(); // Previene che il click si propaghi al document
                 taskSettingsPopup.classList.toggle('visible');
+
+                // Se il popup è visibile, imposta il focus sul campo delle ore e resetta i campi
+                if (taskSettingsPopup.classList.contains('visible')) {
+                    // Resetta i campi ogni volta che si apre il popup
+                    const dayInput = document.getElementById('taskDays');
+                    const hourInput = document.getElementById('taskHours');
+                    const minuteInput = document.getElementById('taskMinutes');
+
+                    dayInput.value = '';
+                    hourInput.value = '';
+                    minuteInput.value = '';
+
+                    // Assicurati che i placeholder siano visibili
+                    dayInput.placeholder = '0';
+                    hourInput.placeholder = '0';
+                    minuteInput.placeholder = '00';
+
+                    setTimeout(() => {
+                        document.getElementById('taskHours').focus();
+                    }, 50);
+                }
             });
 
             // Click sul popup non lo chiude
@@ -2580,6 +2607,23 @@
             // Click ovunque nel documento chiude il popup
             document.addEventListener('click', function () {
                 taskSettingsPopup.classList.remove('visible');
+
+                // Resetta i campi quando si chiude il popup
+                const dayInput = document.getElementById('taskDays');
+                const hourInput = document.getElementById('taskHours');
+                const minuteInput = document.getElementById('taskMinutes');
+
+                dayInput.value = '';
+                hourInput.value = '';
+                minuteInput.value = '';
+
+                // Assicurati che i placeholder siano visibili
+                dayInput.placeholder = '0';
+                hourInput.placeholder = '0';
+                minuteInput.placeholder = '00';
+
+                // Rimetti il focus sull'input principale
+                document.getElementById('taskInput').focus();
             });
 
             // Aggiungiamo listeners per validare input numerici nei campi tempo
@@ -2590,9 +2634,13 @@
                     // Rimuovi tutti i caratteri non numerici
                     this.value = this.value.replace(/[^0-9]/g, '');
 
-                    // Se il valore è vuoto, imposta a 0
-                    if (this.value === '') {
-                        this.value = '0';
+                    // Applica limiti per evitare valori troppo grandi
+                    if (this.id === 'taskDays' && parseInt(this.value) > 999) {
+                        this.value = '999';
+                    }
+
+                    if (this.id === 'taskHours' && parseInt(this.value) > 23) {
+                        this.value = '23';
                     }
 
                     // Per i minuti, assicurati che non superino 59
@@ -2601,6 +2649,37 @@
                     }
 
                     console.log(`Input ${this.id} aggiornato:`, this.value);
+                });
+
+                // Aggiungi event listener per il tasto Enter
+                input.addEventListener('keypress', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        // Simula il click sul pulsante Salva
+                        document.getElementById('saveTimeSettings').click();
+                    }
+                });
+
+                // Gestione del focus per assicurare che il placeholder scompaia
+                input.addEventListener('focus', function () {
+                    // Salva il valore del placeholder originale come attributo data
+                    if (!this.dataset.placeholder) {
+                        this.dataset.placeholder = this.placeholder;
+                    }
+                    // Rimuovi il placeholder quando il campo ottiene il focus
+                    this.placeholder = '';
+                });
+
+                // Ripristina il placeholder quando il campo perde il focus e non ha valore
+                input.addEventListener('blur', function () {
+                    if (this.value === '') {
+                        // Ripristina il placeholder originale (0 per giorni e ore, 00 per minuti)
+                        if (this.id === 'taskMinutes') {
+                            this.placeholder = '00';
+                        } else {
+                            this.placeholder = '0';
+                        }
+                    }
                 });
             });
 
@@ -2622,21 +2701,25 @@
                     // Imposta il flag di salvataggio
                     timeSettingsSaved = true;
 
-                    // Calcola e mostra un'anteprima della scadenza
-                    const anteprima = calcolaAnteprima(savedTaskDays, savedTaskHours, savedTaskMinutes);
+                    // Chiudi il popup
+                    document.getElementById('taskSettingsPopup').classList.remove('visible');
 
-                    // Feedback visivo
-                    const confirmationEl = document.getElementById('timeSavedConfirmation');
-                    if (confirmationEl) {
-                        confirmationEl.innerHTML = "Salvato! <span class='preview'>Scadenza: " + anteprima + "</span>";
-                        confirmationEl.classList.add('visible');
+                    // Resetta i campi dopo aver salvato
+                    const dayInput = document.getElementById('taskDays');
+                    const hourInput = document.getElementById('taskHours');
+                    const minuteInput = document.getElementById('taskMinutes');
 
-                        // Rimuovi il messaggio dopo un po'
-                        setTimeout(() => {
-                            confirmationEl.textContent = "";
-                            confirmationEl.classList.remove('visible');
-                        }, 3000);
-                    }
+                    dayInput.value = '';
+                    hourInput.value = '';
+                    minuteInput.value = '';
+
+                    // Assicurati che i placeholder siano visibili
+                    dayInput.placeholder = '0';
+                    hourInput.placeholder = '0';
+                    minuteInput.placeholder = '00';
+
+                    // Rimetti il focus sull'input principale
+                    document.getElementById('taskInput').focus();
                 });
             }
         });

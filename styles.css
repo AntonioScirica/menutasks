@@ -1,0 +1,24 @@
+/* Stile per l'indicatore di task giornaliera */
+.daily-indicator {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.6;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.task-item.is-daily {
+    position: relative;
+}
+
+.task-item.is-daily .task-actions {
+    right: 35px; /* Sposta i pulsanti per far spazio all'indicatore */
+}
+
+.task-item.completed .daily-indicator {
+    opacity: 0.3;
+} 

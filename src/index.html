@@ -191,7 +191,7 @@
                                 <div class="settings-row">
                                     <div class="settings-label">Giornaliero</div>
                                     <label class="toggle-switch">
-                                        <input type="checkbox">
+                                        <input type="checkbox" id="dailyToggle">
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
@@ -250,6 +250,7 @@
         let savedTaskHours = 0;
         let savedTaskMinutes = 0;
         let timeSettingsSaved = false;
+        let isDailyEnabled = false; // Flag per task giornaliere
 
         // Credenziali di Supabase
         const SUPABASE_URL = window.env.SUPABASE_URL;
@@ -306,7 +307,10 @@
             });
 
             // Connetti a Supabase all'avvio
-            connectToSupabase();
+            connectToSupabase().then(() => {
+                // Controlla immediatamente le task giornaliere da resettare
+                checkDailyTasksForReset();
+            });
 
             // Aggiungi event listener per chiudere il menu quando si esce dal container
             document.querySelector('.projects-container').addEventListener('mouseleave', () => {
@@ -326,6 +330,147 @@
 
             // Inizializza i contatori a zero
             updateInfoStats([]);
+
+            // Imposta timer per controllo task giornaliere a mezzanotte
+            scheduleNextDayCheck();
+
+            // Controlla ogni minuto se è passata mezzanotte
+            checkMidnightInterval = setInterval(checkIfMidnightPassed, 60000);
+        }
+
+        // Variabile per tenere traccia del giorno corrente
+        let currentDay = new Date().getDate();
+        let checkMidnightInterval;
+        let intensiveCheckInterval;
+
+        // Funzione per verificare se è passata mezzanotte mentre l'app è aperta
+        function checkIfMidnightPassed() {
+            const now = new Date();
+            const today = now.getDate();
+
+            // Se il giorno è cambiato, significa che è passata mezzanotte
+            if (today !== currentDay) {
+                console.log('Mezzanotte passata! Riavvio automatico per aggiornare le task giornaliere...');
+                clearInterval(checkMidnightInterval); // Ferma il controllo per evitare più riavvii
+                if (intensiveCheckInterval) {
+                    clearInterval(intensiveCheckInterval);
+                }
+                location.reload(); // Riavvia completamente l'app
+                return; // Interrompiamo l'esecuzione qui, dato che la pagina verrà ricaricata
+            }
+
+            // Verifica se siamo nell'intervallo di controllo intensivo (11:58 PM - 00:01 AM)
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+
+            // Siamo vicini a mezzanotte? (23:58 - 00:01)
+            const isNearMidnight = (hours === 23 && minutes >= 58) || (hours === 0 && minutes <= 1);
+
+            if (isNearMidnight && !intensiveCheckInterval) {
+                // Se siamo vicini a mezzanotte e non abbiamo già un controllo intensivo attivo
+                console.log('Avvio controllo intensivo vicino a mezzanotte (ogni 30 secondi)');
+                intensiveCheckInterval = setInterval(async function () {
+                    console.log('Controllo intensivo task giornaliere...');
+                    // Forza un controllo delle task giornaliere
+                    const hasReset = await checkDailyTasksForReset(true);
+                    if (hasReset) {
+                        console.log('Task giornaliere resettate durante controllo intensivo');
+                        await loadTasks();
+                    }
+
+                    // Se siamo usciti dall'intervallo intensivo, ferma il controllo
+                    const currentTime = new Date();
+                    const h = currentTime.getHours();
+                    const m = currentTime.getMinutes();
+                    if (!((h === 23 && m >= 58) || (h === 0 && m <= 1))) {
+                        console.log('Fine dell\'intervallo di controllo intensivo');
+                        clearInterval(intensiveCheckInterval);
+                        intensiveCheckInterval = null;
+                    }
+                }, 30000); // Controllo ogni 30 secondi
+            } else if (!isNearMidnight && intensiveCheckInterval) {
+                // Se non siamo più vicini a mezzanotte ma abbiamo ancora un controllo intensivo
+                console.log('Fine dell\'intervallo di controllo intensivo');
+                clearInterval(intensiveCheckInterval);
+                intensiveCheckInterval = null;
+            }
+        }
+
+        // Modifico la funzione checkDailyTasksForReset per accettare un parametro di forzatura
+        async function checkDailyTasksForReset(force = false) {
+            try {
+                console.log('Verifico task giornaliere...');
+
+                const now = new Date();
+                const today = new Date(now);
+                today.setHours(0, 0, 0, 0);
+
+                // Cerca task giornaliere programmate per oggi o prima
+                let query = supabase
+                    .from('tasks')
+                    .select('*')
+                    .eq('is_daily', true);
+
+                if (!force) {
+                    // Solo se non è forzato, filtra per scheduled_for
+                    query = query.lte('scheduled_for', today.toISOString());
+                }
+
+                const { data, error } = await query;
+
+                if (error) throw error;
+
+                if (data && data.length > 0) {
+                    console.log(`Trovate ${data.length} task giornaliere da resettare`);
+
+                    // Resetta tutte le task giornaliere programmate
+                    for (const task of data) {
+                        // Controlla se la task è già stata resettata oggi
+                        if (force || task.scheduled_for && new Date(task.scheduled_for) <= today) {
+                            await supabase
+                                .from('tasks')
+                                .update({
+                                    completed: false,
+                                    completed_at: null,
+                                    scheduled_for: null
+                                })
+                                .eq('id', task.id);
+
+                            console.log(`Task giornaliera resettata: ${task.content}`);
+                        }
+                    }
+
+                    // Ricarica le task dopo il reset - forziamo il ricaricamento
+                    return true; // Indichiamo che abbiamo fatto delle modifiche
+                } else {
+                    console.log('Nessuna task giornaliera da resettare');
+                    return false; // Nessuna modifica effettuata
+                }
+
+            } catch (error) {
+                console.error('Errore nel reset delle task giornaliere:', error);
+                return false;
+            }
+        }
+
+        // Funzione per programmare il controllo giornaliero a mezzanotte
+        function scheduleNextDayCheck() {
+            const now = new Date();
+            const tomorrow = new Date(now);
+            tomorrow.setDate(now.getDate() + 1);
+            tomorrow.setHours(0, 0, 0, 0);
+
+            const timeUntilMidnight = tomorrow - now;
+            console.log(`Prossimo controllo task giornaliere tra ${Math.floor(timeUntilMidnight / 1000 / 60)} minuti`);
+
+            // Controllo a mezzanotte esatta: forziamo un refresh completo della pagina
+            setTimeout(() => {
+                console.log('È mezzanotte! Riavvio automatico dell\'app per aggiornare le task giornaliere...');
+
+                // Forza un refresh completo della pagina (equivalente a cmd-r)
+                location.reload();
+
+            }, timeUntilMidnight);
         }
 
         // Aggiungi la funzione per gestire il dropdown
@@ -1263,8 +1408,41 @@
 
                 await loadProjects();
 
+                // Controlla se siamo in un nuovo giorno rispetto all'ultimo accesso
+                checkIfNewDay();
+
+                // Controlla le task giornaliere all'avvio
+                await checkDailyTasksForReset();
+
+                return true; // Connessione riuscita
+
             } catch (error) {
                 console.error('Errore di connessione:', error);
+                return false; // Connessione fallita
+            }
+        }
+
+        // Funzione per verificare se siamo in un nuovo giorno rispetto all'ultimo accesso
+        function checkIfNewDay() {
+            try {
+                const lastAccessDate = localStorage.getItem('lastAccessDate');
+                const today = new Date().toDateString();
+
+                if (lastAccessDate && lastAccessDate !== today) {
+                    console.log('Nuovo giorno rilevato! Ultimo accesso:', lastAccessDate, 'Oggi:', today);
+
+                    // Se l'ultimo accesso è stato in un giorno diverso da oggi,
+                    // forziamo un riavvio completo per garantire che le task giornaliere siano aggiornate
+                    localStorage.setItem('lastAccessDate', today);
+                    location.reload();
+                    return; // Interrompiamo l'esecuzione qui, dato che la pagina verrà ricaricata
+                }
+
+                // Aggiorna la data dell'ultimo accesso
+                localStorage.setItem('lastAccessDate', today);
+
+            } catch (error) {
+                console.error('Errore nel controllo della data:', error);
             }
         }
 
@@ -1340,11 +1518,21 @@
             }
 
             try {
+                // Prima di caricare le task, verifica se ci sono task giornaliere da resettare
+                const hasResetTasks = await checkDailyTasksForReset();
+                if (hasResetTasks) {
+                    console.log('Task giornaliere resettate, proseguo con il caricamento delle task');
+                }
+
                 let query = supabase.from('tasks').select('*');
 
                 if (currentProjectId !== 'all') {
                     query = query.eq('project_id', currentProjectId);
                 }
+
+                // Rimuoviamo il filtro per scheduled_for per assicurarci che tutte le task giornaliere
+                // vengano mostrate indipendentemente dallo stato
+                // Filtriamo invece per completed perché non vogliamo mostrare le task completate nell'elenco principale
 
                 const { data, error } = await query;
 
@@ -1645,6 +1833,10 @@
                             newTask.time_end_task = tempistica;
                             console.log('Tempistica salvata:', tempistica);
                         }
+
+                        // Salva lo stato giornaliero per task principali
+                        newTask.is_daily = isDailyEnabled;
+                        console.log('Task giornaliera:', isDailyEnabled);
                     } else {
                         // Ottieni la priorità dal genitore
                         const { data: parentData, error: parentError } = await supabase
@@ -1818,7 +2010,7 @@
                     try {
                         const { data, error } = await supabase
                             .from('tasks')
-                            .select('priority')
+                            .select('priority, is_daily')
                             .eq('id', taskId)
                             .single();
 
@@ -1829,6 +2021,19 @@
                         } else {
                             // Default a normal se non è impostata una priorità
                             taskElement.classList.add('priority-normal');
+                        }
+
+                        // Aggiungi indicatore visivo per task giornaliere
+                        if (data && data.is_daily) {
+                            taskElement.classList.add('is-daily');
+
+                            // Aggiungi piccola icona per indicare che è una task giornaliera
+                            const dailyIndicator = document.createElement('div');
+                            dailyIndicator.className = 'daily-indicator';
+                            dailyIndicator.title = 'Task giornaliera';
+                            dailyIndicator.innerHTML = '<i data-lucide="repeat" class="icon-repeat" style="width: 14px; height: 14px;"></i>';
+                            taskElement.appendChild(dailyIndicator);
+                            lucide.createIcons();
                         }
                     } catch (error) {
                         console.error('Errore nel recupero della priorità:', error);
@@ -2347,6 +2552,28 @@
                     updateData.completed_at = null;
                 }
 
+                // Ottieni i dati della task prima di aggiornare
+                const { data: taskData, error: getError } = await supabase
+                    .from('tasks')
+                    .select('*')
+                    .eq('id', taskId)
+                    .single();
+
+                if (getError) throw getError;
+
+                // Gestisci in modo speciale le task giornaliere
+                if (completedState && taskData && taskData.is_daily) {
+                    console.log('Task giornaliera completata, sarà visibile domani:', taskData.content);
+
+                    // Calcola la data di domani (a mezzanotte)
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    tomorrow.setHours(0, 0, 0, 0);
+
+                    // Aggiungi la proprietà scheduled_for per attivarla domani
+                    updateData.scheduled_for = tomorrow.toISOString();
+                }
+
                 // Aggiorna lo stato nel database
                 const { error } = await supabase
                     .from('tasks')
@@ -2355,15 +2582,6 @@
 
                 if (error) throw error;
 
-                // Ottieni i dati aggiornati per questo specifico task
-                const { data: taskData, error: taskError } = await supabase
-                    .from('tasks')
-                    .select('*')
-                    .eq('id', taskId)
-                    .single();
-
-                if (taskError) throw taskError;
-
                 // Controlla e rimuovi le intestazioni senza task
                 checkAndRemoveEmptyHeaders();
 
@@ -2371,7 +2589,11 @@
                 await loadTasks();
 
                 if (completedState) {
-                    showStatus('Task completata', 'success');
+                    if (taskData && taskData.is_daily) {
+                        showStatus('Task completata - riapparirà domani', 'success');
+                    } else {
+                        showStatus('Task completata', 'success');
+                    }
                 } else {
                     showStatus('Task ripristinata', 'info');
                 }
@@ -2505,7 +2727,12 @@
         }
 
         // Inizializza l'app
-        document.addEventListener('DOMContentLoaded', initUI);
+        document.addEventListener('DOMContentLoaded', async function () {
+            initUI();
+            // Assicurati che la connessione a Supabase e il controllo delle task giornaliere
+            // siano stati completati prima di procedere
+            await connectToSupabase();
+        });
 
         // ... existing code ...
         // Funzione per applicare tutti i filtri attivi
@@ -2583,10 +2810,13 @@
                     const dayInput = document.getElementById('taskDays');
                     const hourInput = document.getElementById('taskHours');
                     const minuteInput = document.getElementById('taskMinutes');
+                    const dailyToggle = document.getElementById('dailyToggle');
 
                     dayInput.value = '';
                     hourInput.value = '';
                     minuteInput.value = '';
+                    dailyToggle.checked = false; // Resetta anche il toggle
+                    isDailyEnabled = false; // Resetta la variabile
 
                     // Assicurati che i placeholder siano visibili
                     dayInput.placeholder = '0';
@@ -2692,10 +2922,14 @@
                     savedTaskHours = parseInt(document.getElementById('taskHours').value) || 0;
                     savedTaskMinutes = parseInt(document.getElementById('taskMinutes').value) || 0;
 
+                    // Leggi lo stato dell'opzione giornaliero
+                    isDailyEnabled = document.getElementById('dailyToggle').checked;
+
                     console.log('Impostazioni tempo salvate:', {
                         giorni: savedTaskDays,
                         ore: savedTaskHours,
-                        minuti: savedTaskMinutes
+                        minuti: savedTaskMinutes,
+                        giornaliero: isDailyEnabled
                     });
 
                     // Imposta il flag di salvataggio
@@ -2792,6 +3026,60 @@
             }
 
             return anteprima.trim();
+        }
+
+        // Funzione per verificare e resettare le task giornaliere (versione semplificata per uso frequente)
+        async function checkDailyTasksForReset() {
+            try {
+                console.log('Verifico task giornaliere...');
+
+                const now = new Date();
+                const today = new Date(now);
+                today.setHours(0, 0, 0, 0);
+
+                // Cerca task giornaliere programmate per oggi o prima
+                const { data, error } = await supabase
+                    .from('tasks')
+                    .select('*')
+                    .eq('is_daily', true)
+                    .lte('scheduled_for', today.toISOString());
+
+                if (error) throw error;
+
+                if (data && data.length > 0) {
+                    console.log(`Trovate ${data.length} task giornaliere da resettare`);
+
+                    // Resetta tutte le task giornaliere programmate
+                    for (const task of data) {
+                        await supabase
+                            .from('tasks')
+                            .update({
+                                completed: false,
+                                completed_at: null,
+                                scheduled_for: null
+                            })
+                            .eq('id', task.id);
+
+                        console.log(`Task giornaliera resettata: ${task.content}`);
+                    }
+
+                    // Ricarica le task dopo il reset - forziamo il ricaricamento
+                    return true; // Indichiamo che abbiamo fatto delle modifiche
+                } else {
+                    console.log('Nessuna task giornaliera da resettare');
+                    return false; // Nessuna modifica effettuata
+                }
+
+            } catch (error) {
+                console.error('Errore nel reset delle task giornaliere:', error);
+                return false;
+            }
+        }
+
+        // Funzione completa per verificare le task giornaliere (eseguita a mezzanotte)
+        async function checkDailyTasks() {
+            await checkDailyTasksForReset();
+            await loadTasks(); // Ricarica le task dopo il reset
         }
     </script>
 </body>

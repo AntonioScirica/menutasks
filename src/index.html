@@ -16,6 +16,49 @@
     <link rel="stylesheet" href="styles.css?v=1.0">
     <!-- Link al CSS del popup impostazioni -->
     <link rel="stylesheet" href="css/components/task-settings-popup.css?v=1.0">
+    <style>
+        /* ... existing styles ... */
+
+        /* Stili per il bottone Salva nelle impostazioni tempo */
+        .time-save-row {
+            justify-content: center;
+            padding-top: 5px;
+        }
+
+        .settings-save-button {
+            background-color: #C47162;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .settings-save-button:hover {
+            background-color: #D48172;
+        }
+
+        .save-confirmation {
+            color: #6fd97b;
+            font-size: 12px;
+            margin-left: 8px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .save-confirmation.visible {
+            opacity: 1;
+        }
+
+        .preview {
+            display: block;
+            color: #A0A0A0;
+            font-size: 11px;
+            margin-top: 3px;
+        }
+    </style>
 </head>
 
 <body>
@@ -117,18 +160,22 @@
                                     <div class="settings-label">Tempo</div>
                                     <div class="time-inputs">
                                         <div class="time-input">
-                                            <input type="text" value="0">
-                                            <div class="time-unit">day</div>
+                                            <input type="text" id="taskDays" value="0">
+                                            <div class="time-unit">giorni</div>
                                         </div>
                                         <div class="time-input">
-                                            <input type="text" value="0">
-                                            <div class="time-unit">hour</div>
+                                            <input type="text" id="taskHours" value="0">
+                                            <div class="time-unit">ore</div>
                                         </div>
                                         <div class="time-input">
-                                            <input type="text" value="00">
+                                            <input type="text" id="taskMinutes" value="00">
                                             <div class="time-unit">min</div>
                                         </div>
                                     </div>
+                                </div>
+                                <div class="settings-row time-save-row">
+                                    <button id="saveTimeSettings" class="settings-save-button">Salva</button>
+                                    <span id="timeSavedConfirmation" class="save-confirmation"></span>
                                 </div>
                                 <div class="settings-divider"></div>
                                 <div class="settings-row">
@@ -191,6 +238,12 @@
             medium: false,
             basic: false
         };
+
+        // Variabili per memorizzare le impostazioni di tempo
+        let savedTaskDays = 0;
+        let savedTaskHours = 0;
+        let savedTaskMinutes = 0;
+        let timeSettingsSaved = false;
 
         // Credenziali di Supabase
         const SUPABASE_URL = window.env.SUPABASE_URL;
@@ -1214,7 +1267,7 @@
             if (!tasks || tasks.length === 0) {
                 // Se non ci sono task, imposta tutti i contatori a zero
                 document.getElementById('completedCount').textContent = '0';
-                document.getElementById('totalTime').textContent = '0d 0h 0m';
+                document.getElementById('totalTime').textContent = '0m';
                 document.getElementById('urgentTasksCount').textContent = '0';
                 document.getElementById('mediumTasksCount').textContent = '0';
                 document.getElementById('basicTasksCount').textContent = '0';
@@ -1225,23 +1278,38 @@
             const completedCount = tasks.filter(task => task.completed).length;
             document.getElementById('completedCount').textContent = completedCount;
 
-            // Calcola il tempo totale (simulato con un calcolo semplice)
+            // Calcola il tempo totale sommando i valori di time_end_task
             let totalMinutes = 0;
+
             tasks.forEach(task => {
-                if (task.priority === 'urgent') {
-                    totalMinutes += 180; // 3 ore per task urgenti
-                } else if (task.priority === 'medium') {
-                    totalMinutes += 120; // 2 ore per task medie
-                } else {
-                    totalMinutes += 60; // 1 ora per task normali
+                // Se la task ha un valore time_end_task, sommalo
+                if (task.time_end_task && !isNaN(task.time_end_task)) {
+                    totalMinutes += parseInt(task.time_end_task);
                 }
             });
+
+            console.log('Totale minuti calcolato dalle task:', totalMinutes);
 
             // Converti minuti in giorni, ore e minuti
             const days = Math.floor(totalMinutes / (24 * 60));
             const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
             const mins = totalMinutes % 60;
-            document.getElementById('totalTime').textContent = `${days}d ${hours}h ${mins}m`;
+
+            // Formatta il testo mostrando solo le unità necessarie
+            let timeText = '';
+
+            if (days > 0) {
+                timeText += `${days}d `;
+            }
+
+            if (hours > 0) {
+                timeText += `${hours}h `;
+            }
+
+            // Mostra sempre i minuti, anche se sono zero
+            timeText += `${mins}m`;
+
+            document.getElementById('totalTime').textContent = timeText;
 
             // Filtra per escludere le task completate prima di contare per priorità
             const activeTasks = tasks.filter(task => !task.completed);
@@ -1495,13 +1563,11 @@
             try {
                 if (currentEditingTaskId !== null) {
                     // Logica per la modifica di una task esistente
-                    const priority = currentPriority;
-
                     const { error } = await supabase
                         .from('tasks')
                         .update({
                             content: taskText,
-                            priority: priority
+                            priority: currentPriority
                         })
                         .eq('id', currentEditingTaskId);
 
@@ -1515,7 +1581,7 @@
                         // Rimuovi le precedenti classi di priorità
                         taskElement.classList.remove('priority-urgent', 'priority-medium', 'priority-normal');
                         // Aggiungi la nuova classe di priorità
-                        taskElement.classList.add(`priority-${priority}`);
+                        taskElement.classList.add(`priority-${currentPriority}`);
                     }
 
                     currentEditingTaskId = null;
@@ -1566,6 +1632,13 @@
                     // Aggiungi la priorità selezionata (solo per task principali)
                     if (!parentId) {
                         newTask.priority = currentPriority;
+
+                        // Salva la tempistica esatta
+                        const tempistica = calcolaTimestamp();
+                        if (tempistica) {
+                            newTask.time_end_task = tempistica;
+                            console.log('Tempistica salvata:', tempistica);
+                        }
                     } else {
                         // Ottieni la priorità dal genitore
                         const { data: parentData, error: parentError } = await supabase
@@ -1581,12 +1654,17 @@
                         }
                     }
 
+                    console.log('Creazione nuova task con dati:', newTask);
+
                     const { data, error } = await supabase
                         .from('tasks')
                         .insert([newTask])
                         .select();
 
-                    if (error) throw error;
+                    if (error) {
+                        console.error("Errore durante l'inserimento della task:", error);
+                        throw error;
+                    }
 
                     if (data && data.length > 0) {
                         if (parentId) {
@@ -1630,6 +1708,11 @@
 
                         // Aggiorna le statistiche dopo aver aggiunto la task
                         await refreshTaskStats();
+
+                        // Reset dei campi di input del tempo
+                        document.getElementById('taskDays').value = '0';
+                        document.getElementById('taskHours').value = '0';
+                        document.getElementById('taskMinutes').value = '00';
                     }
                 }
 
@@ -2498,7 +2581,135 @@
             document.addEventListener('click', function () {
                 taskSettingsPopup.classList.remove('visible');
             });
+
+            // Aggiungiamo listeners per validare input numerici nei campi tempo
+            const timeInputs = document.querySelectorAll('.time-input input');
+            timeInputs.forEach(input => {
+                // Valida i valori: solo numeri
+                input.addEventListener('input', function () {
+                    // Rimuovi tutti i caratteri non numerici
+                    this.value = this.value.replace(/[^0-9]/g, '');
+
+                    // Se il valore è vuoto, imposta a 0
+                    if (this.value === '') {
+                        this.value = '0';
+                    }
+
+                    // Per i minuti, assicurati che non superino 59
+                    if (this.id === 'taskMinutes' && parseInt(this.value) > 59) {
+                        this.value = '59';
+                    }
+
+                    console.log(`Input ${this.id} aggiornato:`, this.value);
+                });
+            });
+
+            // Event listener per il bottone Salva impostazioni tempo
+            const saveTimeButton = document.getElementById('saveTimeSettings');
+            if (saveTimeButton) {
+                saveTimeButton.addEventListener('click', function () {
+                    // Leggi i valori attuali
+                    savedTaskDays = parseInt(document.getElementById('taskDays').value) || 0;
+                    savedTaskHours = parseInt(document.getElementById('taskHours').value) || 0;
+                    savedTaskMinutes = parseInt(document.getElementById('taskMinutes').value) || 0;
+
+                    console.log('Impostazioni tempo salvate:', {
+                        giorni: savedTaskDays,
+                        ore: savedTaskHours,
+                        minuti: savedTaskMinutes
+                    });
+
+                    // Imposta il flag di salvataggio
+                    timeSettingsSaved = true;
+
+                    // Calcola e mostra un'anteprima della scadenza
+                    const anteprima = calcolaAnteprima(savedTaskDays, savedTaskHours, savedTaskMinutes);
+
+                    // Feedback visivo
+                    const confirmationEl = document.getElementById('timeSavedConfirmation');
+                    if (confirmationEl) {
+                        confirmationEl.innerHTML = "Salvato! <span class='preview'>Scadenza: " + anteprima + "</span>";
+                        confirmationEl.classList.add('visible');
+
+                        // Rimuovi il messaggio dopo un po'
+                        setTimeout(() => {
+                            confirmationEl.textContent = "";
+                            confirmationEl.classList.remove('visible');
+                        }, 3000);
+                    }
+                });
+            }
         });
+
+        // Funzione per calcolare il timestamp dagli input di tempo
+        function calcolaTimestamp() {
+            let giorni, ore, minuti;
+
+            if (timeSettingsSaved) {
+                // Usa i valori memorizzati se il bottone Salva è stato premuto
+                giorni = savedTaskDays;
+                ore = savedTaskHours;
+                minuti = savedTaskMinutes;
+                console.log('Usando valori tempo salvati:', { giorni, ore, minuti });
+
+                // Reset del flag dopo l'uso
+                timeSettingsSaved = false;
+            } else {
+                // Fallback: leggi direttamente dagli input
+                const dayInput = document.getElementById('taskDays');
+                const hourInput = document.getElementById('taskHours');
+                const minuteInput = document.getElementById('taskMinutes');
+
+                if (!dayInput || !hourInput || !minuteInput) {
+                    console.error('Elementi di input tempo non trovati!');
+                    return null;
+                }
+
+                giorni = parseInt(dayInput.value) || 0;
+                ore = parseInt(hourInput.value) || 0;
+                minuti = parseInt(minuteInput.value) || 0;
+
+                console.log('Usando valori tempo diretti dagli input:', { giorni, ore, minuti });
+            }
+
+            // Se tutti i valori sono zero, non impostare una scadenza
+            if (giorni === 0 && ore === 0 && minuti === 0) {
+                console.log('Nessuna scadenza impostata');
+                return null;
+            }
+
+            // Converti tutto in minuti totali
+            const minutiTotali = (giorni * 24 * 60) + (ore * 60) + minuti;
+
+            console.log('Minuti totali calcolati:', minutiTotali);
+
+            // Salviamo il valore numerico dei minuti totali
+            return minutiTotali;
+        }
+
+        // Funzione per calcolare un'anteprima della data di scadenza
+        function calcolaAnteprima(giorni, ore, minuti) {
+            if (giorni === 0 && ore === 0 && minuti === 0) {
+                return "Nessuna";
+            }
+
+            // Formato semplice: "2g 10h 30m"
+            let anteprima = '';
+
+            if (giorni > 0) {
+                anteprima += `${giorni}g `;
+            }
+
+            if (ore > 0) {
+                anteprima += `${ore}h `;
+            }
+
+            if (minuti > 0) {
+                anteprima += `${minuti}m`;
+            }
+
+            return anteprima.trim();
+        }
     </script>
 </body>
 

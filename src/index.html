@@ -196,8 +196,17 @@
                                     </label>
                                 </div>
                                 <div class="settings-divider"></div>
-                                <div class="settings-row add-description">
+                                <div class="settings-row add-description" id="addDescriptionRow">
                                     <div class="settings-label">+ Aggiungi descrizione</div>
+                                </div>
+                                <div class="settings-row description-row" id="descriptionRow" style="display: none;">
+                                    <div class="description-container">
+                                        <textarea id="taskDescription" class="description-textarea"
+                                            placeholder="Descrizione..."></textarea>
+                                        <div class="close-button-container">
+                                            <button class="close-description-btn" id="closeDescriptionBtn">×</button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="settings-divider"></div>
                                 <div class="settings-row save-button-row">
@@ -251,6 +260,7 @@
         let savedTaskMinutes = 0;
         let timeSettingsSaved = false;
         let isDailyEnabled = false; // Flag per task giornaliere
+        let currentTaskDescription = ''; // Variabile per la descrizione della task
 
         // Credenziali di Supabase
         const SUPABASE_URL = window.env.SUPABASE_URL;
@@ -1836,6 +1846,12 @@
 
                         // Salva lo stato giornaliero per task principali
                         newTask.is_daily = isDailyEnabled;
+
+                        // Salva la descrizione se presente
+                        if (currentTaskDescription) {
+                            newTask.description = currentTaskDescription;
+                        }
+
                         console.log('Task giornaliera:', isDailyEnabled);
                     } else {
                         // Ottieni la priorità dal genitore
@@ -2291,31 +2307,61 @@
                 taskInput.value = taskText;
                 taskInput.focus();
 
-                // Recupera la priorità della task dal database
+                // Salvare l'ID dell'attività in modifica
+                currentEditingTaskId = taskId;
+
+                // Recupera dati completi della task dal database
                 try {
                     const { data, error } = await supabase
                         .from('tasks')
-                        .select('priority')
+                        .select('*')
                         .eq('id', taskId)
                         .single();
 
                     if (error) throw error;
 
                     // Imposta la priorità corrente
-                    if (data && data.priority) {
+                    if (data.priority) {
                         setPriority(data.priority);
                     } else {
                         setPriority('normal'); // Valore predefinito
                     }
+
+                    // Salva la descrizione nella variabile globale
+                    currentTaskDescription = data.description || '';
+
+                    // Apri il popup delle impostazioni
+                    const taskSettingsPopup = document.getElementById('taskSettingsPopup');
+                    taskSettingsPopup.classList.add('visible');
+
+                    // Se c'è una descrizione, mostra la textarea
+                    if (currentTaskDescription) {
+                        const addDescriptionRow = document.getElementById('addDescriptionRow');
+                        const descriptionRow = document.getElementById('descriptionRow');
+                        const taskDescriptionField = document.getElementById('taskDescription');
+
+                        addDescriptionRow.style.display = 'none';
+                        descriptionRow.style.display = 'flex';
+                        taskDescriptionField.value = currentTaskDescription;
+                    }
+
+                    // Se la task è giornaliera, imposta il toggle
+                    if (data.is_daily) {
+                        document.getElementById('dailyToggle').checked = true;
+                        isDailyEnabled = true;
+                    } else {
+                        document.getElementById('dailyToggle').checked = false;
+                        isDailyEnabled = false;
+                    }
+
                 } catch (error) {
-                    console.error('Errore nel recupero della priorità:', error);
+                    console.error('Errore nel recupero dei dati della task:', error);
                 }
 
-                // Cambia l'icona del pulsante e salva l'ID dell'attività in modifica
+                // Cambia l'icona del pulsante
                 const addButton = document.getElementById('addTaskButton');
                 addButton.innerHTML = '<i data-lucide="check" class="icon-check"></i>';
                 lucide.createIcons();
-                currentEditingTaskId = taskId;
             }
         }
 
@@ -2812,6 +2858,20 @@
                     const minuteInput = document.getElementById('taskMinutes');
                     const dailyToggle = document.getElementById('dailyToggle');
 
+                    // Resetta anche la descrizione se non stiamo editando una task esistente
+                    if (currentEditingTaskId === null) {
+                        currentTaskDescription = '';
+
+                        // Assicuriamo che la UI sia nello stato corretto
+                        const addDescriptionRow = document.getElementById('addDescriptionRow');
+                        const descriptionRow = document.getElementById('descriptionRow');
+                        const taskDescription = document.getElementById('taskDescription');
+
+                        addDescriptionRow.style.display = 'flex';
+                        descriptionRow.style.display = 'none';
+                        taskDescription.value = '';
+                    }
+
                     dayInput.value = '';
                     hourInput.value = '';
                     minuteInput.value = '';
@@ -2854,6 +2914,32 @@
 
                 // Rimetti il focus sull'input principale
                 document.getElementById('taskInput').focus();
+            });
+
+            // Event listener per "Aggiungi descrizione"
+            const addDescriptionRow = document.getElementById('addDescriptionRow');
+            const descriptionRow = document.getElementById('descriptionRow');
+            const taskDescription = document.getElementById('taskDescription');
+            const closeDescriptionBtn = document.getElementById('closeDescriptionBtn');
+
+            addDescriptionRow.addEventListener('click', function (event) {
+                event.stopPropagation();
+                addDescriptionRow.style.display = 'none';
+                descriptionRow.style.display = 'flex';
+                taskDescription.focus();
+
+                // Se c'è una descrizione salvata, mostrala
+                if (currentTaskDescription) {
+                    taskDescription.value = currentTaskDescription;
+                }
+            });
+
+            closeDescriptionBtn.addEventListener('click', function (event) {
+                event.stopPropagation();
+                addDescriptionRow.style.display = 'flex';
+                descriptionRow.style.display = 'none';
+                // Mantieni il valore della descrizione in memoria
+                currentTaskDescription = taskDescription.value;
             });
 
             // Aggiungiamo listeners per validare input numerici nei campi tempo
@@ -2916,44 +3002,80 @@
             // Event listener per il bottone Salva impostazioni tempo
             const saveTimeButton = document.getElementById('saveTimeSettings');
             if (saveTimeButton) {
-                saveTimeButton.addEventListener('click', function () {
-                    // Leggi i valori attuali
+                saveTimeButton.addEventListener('click', async function (event) {
+                    event.stopPropagation();
+
+                    // Salva i valori di input in variabili globali
                     savedTaskDays = parseInt(document.getElementById('taskDays').value) || 0;
                     savedTaskHours = parseInt(document.getElementById('taskHours').value) || 0;
                     savedTaskMinutes = parseInt(document.getElementById('taskMinutes').value) || 0;
-
-                    // Leggi lo stato dell'opzione giornaliero
                     isDailyEnabled = document.getElementById('dailyToggle').checked;
+                    currentTaskDescription = document.getElementById('taskDescription').value.trim();
 
-                    console.log('Impostazioni tempo salvate:', {
-                        giorni: savedTaskDays,
-                        ore: savedTaskHours,
-                        minuti: savedTaskMinutes,
-                        giornaliero: isDailyEnabled
-                    });
+                    // Assicurati che ci sia almeno un valore per evitare di salvare 0/0/0
+                    const hasSomeTime = savedTaskDays > 0 || savedTaskHours > 0 || savedTaskMinutes > 0;
 
-                    // Imposta il flag di salvataggio
-                    timeSettingsSaved = true;
+                    // Se il task è in modifica, aggiorna direttamente la task
+                    if (currentEditingTaskId !== null) {
+                        try {
+                            // Prepara l'oggetto per l'aggiornamento
+                            const updateData = {
+                                is_daily: isDailyEnabled
+                            };
+
+                            // Aggiorna la descrizione
+                            updateData.description = currentTaskDescription;
+
+                            // Aggiorna il time_end_task solo se è stato impostato un tempo
+                            if (hasSomeTime) {
+                                const tempistica = calcolaTimestamp();
+                                if (tempistica) {
+                                    updateData.time_end_task = tempistica;
+                                }
+                            }
+
+                            // Esegui l'aggiornamento
+                            const { error } = await supabase
+                                .from('tasks')
+                                .update(updateData)
+                                .eq('id', currentEditingTaskId);
+
+                            if (error) throw error;
+
+                            // Aggiorna la classe sulla task se è giornaliera
+                            const taskElement = document.getElementById('task-' + currentEditingTaskId);
+                            if (taskElement) {
+                                if (isDailyEnabled) {
+                                    taskElement.classList.add('daily-task');
+                                } else {
+                                    taskElement.classList.remove('daily-task');
+                                }
+                            }
+
+                            showStatus('Impostazioni salvate', 'success');
+                        } catch (error) {
+                            console.error('Errore durante l\'aggiornamento delle impostazioni:', error);
+                            showStatus('Errore durante il salvataggio', 'error');
+                        }
+                    }
+
+                    // Segnala che le impostazioni sono state salvate
+                    timeSettingsSaved = hasSomeTime;
 
                     // Chiudi il popup
-                    document.getElementById('taskSettingsPopup').classList.remove('visible');
+                    taskSettingsPopup.classList.remove('visible');
 
-                    // Resetta i campi dopo aver salvato
-                    const dayInput = document.getElementById('taskDays');
-                    const hourInput = document.getElementById('taskHours');
-                    const minuteInput = document.getElementById('taskMinutes');
+                    // Reset dei campi
+                    document.getElementById('taskDays').value = '';
+                    document.getElementById('taskHours').value = '';
+                    document.getElementById('taskMinutes').value = '';
+                    document.getElementById('dailyToggle').checked = false;
 
-                    dayInput.value = '';
-                    hourInput.value = '';
-                    minuteInput.value = '';
-
-                    // Assicurati che i placeholder siano visibili
-                    dayInput.placeholder = '0';
-                    hourInput.placeholder = '0';
-                    minuteInput.placeholder = '00';
-
-                    // Rimetti il focus sull'input principale
-                    document.getElementById('taskInput').focus();
+                    // Nascondi la textarea e mostra "Aggiungi descrizione"
+                    if (descriptionRow.style.display === 'flex') {
+                        descriptionRow.style.display = 'none';
+                        addDescriptionRow.style.display = 'flex';
+                    }
                 });
             }
         });
@@ -3081,6 +3203,39 @@
             await checkDailyTasksForReset();
             await loadTasks(); // Ricarica le task dopo il reset
         }
+
+        // Funzione per resettare tutte le impostazioni e i campi
+        function resetTaskSettings() {
+            // Resetta i campi del tempo
+            document.getElementById('taskDays').value = '';
+            document.getElementById('taskHours').value = '';
+            document.getElementById('taskMinutes').value = '';
+            document.getElementById('dailyToggle').checked = false;
+
+            // Resetta la descrizione
+            currentTaskDescription = '';
+
+            // Nascondi la textarea e mostra "Aggiungi descrizione"
+            const addDescriptionRow = document.getElementById('addDescriptionRow');
+            const descriptionRow = document.getElementById('descriptionRow');
+            if (descriptionRow) {
+                descriptionRow.style.display = 'none';
+                addDescriptionRow.style.display = 'flex';
+                document.getElementById('taskDescription').value = '';
+            }
+
+            // Resetta le variabili globali
+            timeSettingsSaved = false;
+            isDailyEnabled = false;
+        }
+
+        // Dopo aver aggiunto con successo una task, resetta le impostazioni
+        document.getElementById('addTaskButton').addEventListener('click', function () {
+            if (currentEditingTaskId === null) {
+                // Solo se stiamo aggiungendo una nuova task, non se stiamo modificando
+                resetTaskSettings();
+            }
+        });
     </script>
 </body>
 

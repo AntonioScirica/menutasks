@@ -3970,17 +3970,15 @@
                     timeSection.classList.add('time-disabled');
                 }
 
-                // Avvia il timer SOLO visuale per il popup (non per il conteggio effettivo)
-                // Ferma prima qualsiasi timer visuale esistente
+                // NON avviare il timer visuale, mostra solo il contatore statico 00:00:00
+                // Ferma qualsiasi timer visuale precedente
                 if (timerInterval) {
                     clearInterval(timerInterval);
+                    timerInterval = null;
                 }
 
+                // Reset dei secondi visualizzati a zero
                 timerSeconds = 0;
-                timerInterval = setInterval(() => {
-                    timerSeconds++;
-                    timerDisplay.textContent = formatTime(timerSeconds);
-                }, 1000);
             } else {
                 // Timer disattivato
                 timerLabel.style.display = 'inline';
@@ -3991,7 +3989,7 @@
                     timeSection.classList.remove('time-disabled');
                 }
 
-                // Ferma il timer visuale
+                // Ferma il timer visuale se era in esecuzione
                 if (timerInterval) {
                     clearInterval(timerInterval);
                     timerInterval = null;

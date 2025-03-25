@@ -211,8 +211,13 @@
     -ms-overflow-style: none; /* IE and Edge */
 }
 
-/* Mostra il menu al passaggio del mouse */
-.projects-container:hover .projects-content {
+/* Mostra il menu quando ha la classe visible */
+.projects-content.visible {
+    display: block;
+}
+
+/* Mostra il menu quando ha la classe active */
+.projects-content.active {
     display: block;
 }
 

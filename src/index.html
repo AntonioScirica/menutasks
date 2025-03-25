@@ -162,7 +162,7 @@
                             <i data-lucide="plus" class="icon-plus"></i>
                             <div class="task-settings-popup" id="taskSettingsPopup">
                                 <h2>impostazioni</h2>
-                                <div class="settings-row">
+                                <div class="settings-row" id="timeSettingsRow">
                                     <div class="settings-label">Tempo</div>
                                     <div class="time-inputs">
                                         <div class="time-input">
@@ -181,9 +181,12 @@
                                 </div>
                                 <div class="settings-divider"></div>
                                 <div class="settings-row">
-                                    <div class="settings-label">Timer</div>
+                                    <div class="settings-label">
+                                        <span id="timerLabel">Timer</span>
+                                        <span id="timerDisplay" style="display: none;">00:00:00</span>
+                                    </div>
                                     <label class="toggle-switch">
-                                        <input type="checkbox" checked>
+                                        <input type="checkbox" id="timerToggle">
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
@@ -215,7 +218,7 @@
                             </div>
                         </div>
                     </div>
-                    <button id="addTaskButton" onclick="addTask()">
+                    <button id="addTaskButton">
                         <i data-lucide="arrow-up" class="icon-arrow-up"></i>
                     </button>
                 </div>
@@ -270,7 +273,8 @@
         // Inizializza l'interfaccia utente
         function initUI() {
             // Aggiungi i gestori eventi per i pulsanti
-            document.getElementById('addTaskButton').addEventListener('click', addTask);
+            // Rimuovo questo event listener perché viene aggiunto più avanti nel codice
+            // document.getElementById('addTaskButton').addEventListener('click', addTask);
             document.getElementById('addProjectButton').addEventListener('click', toggleProjectInput);
             document.querySelector('.add-project-menu-button').addEventListener('click', () => {
                 toggleProjectInput();
@@ -1740,13 +1744,32 @@
 
                 // Aggiorna il contatore delle task completate
                 updateCompletedCounter();
+
+                // Inizializza i timer per le task attive
+                initializeTaskTimers(activeTasks);
             } catch (error) {
-                console.error('Errore nel caricamento delle attività:', error);
+                console.error('Errore durante il caricamento delle task:', error);
+                showStatus('Errore durante il caricamento delle task', 'error');
             }
+        }
+
+        // Funzione per inizializzare i timer delle task attive
+        function initializeTaskTimers(tasks) {
+            console.log("Inizializzazione timer per task attive...");
+
+            // Inizializza solo i timer per le task che non hanno già un timer attivo
+            tasks.forEach(task => {
+                if (!task.completed && !activeTimers.has(task.id)) {
+                    console.log(`Inizializzando timer per task ${task.id}`);
+                    startTaskTimer(task.id);
+                }
+            });
         }
 
         // Modifica la funzione addTask per gestire le subtask
         async function addTask(parentId = null) {
+            console.log("Chiamata a addTask()", new Date().toLocaleTimeString(), { parentId, currentEditingTaskId });
+
             if (!currentProjectId) {
                 showStatus('Seleziona prima un progetto', 'error');
                 return;
@@ -1853,6 +1876,12 @@
                             newTask.description = currentTaskDescription;
                         }
 
+                        // Salva lo stato e il valore del timer in base alla scelta dell'utente
+                        const timerEnabled = document.getElementById('timerToggle').checked;
+                        newTask.timer_enabled = timerEnabled;
+                        newTask.timer_seconds = 0; // Inizia sempre da zero
+                        console.log('Timer impostato:', timerEnabled ? 'attivo' : 'disattivato');
+
                         console.log('Task giornaliera:', isDailyEnabled);
                     } else {
                         // Ottieni la priorità dal genitore
@@ -1917,6 +1946,11 @@
 
                         // Imposta il flag della task creata
                         isTaskCreated = true;
+
+                        // Avvia il timer per la nuova task solo se è stato abilitato
+                        if (!parentId && data[0].timer_enabled) {
+                            startTaskTimer(data[0].id);
+                        }
                     }
 
                     // Aggiorna le statistiche dopo aver aggiunto la task
@@ -2599,9 +2633,61 @@
                 // Se la task viene completata, aggiungi la data di completamento
                 if (completedState) {
                     updateData.completed_at = new Date().toISOString();
+
+                    // Ottieni il tempo accumulato dal timer prima di fermarlo
+                    let taskSeconds = 0;
+                    if (activeTimers.has(taskId)) {
+                        const taskTimer = activeTimers.get(taskId);
+                        taskSeconds = taskTimer.seconds;
+                    } else {
+                        // Se il timer non è attivo, prova a recuperare i secondi dal database
+                        const { data: timerData, error: timerError } = await supabase
+                            .from('tasks')
+                            .select('timer_seconds')
+                            .eq('id', taskId)
+                            .single();
+
+                        if (!timerError && timerData && timerData.timer_seconds) {
+                            taskSeconds = timerData.timer_seconds;
+                        }
+                    }
+
+                    // Converti i secondi in minuti e aggiungi al campo time_end_task
+                    if (taskSeconds > 0) {
+                        const taskMinutes = Math.ceil(taskSeconds / 60); // Arrotonda per eccesso
+
+                        // Ottieni il valore attuale di time_end_task se esiste
+                        const { data: taskData, error: taskError } = await supabase
+                            .from('tasks')
+                            .select('time_end_task')
+                            .eq('id', taskId)
+                            .single();
+
+                        // Aggiungi il tempo al valore esistente o inizializza a 0
+                        const currentMinutes = (!taskError && taskData && taskData.time_end_task)
+                            ? parseInt(taskData.time_end_task)
+                            : 0;
+
+                        updateData.time_end_task = currentMinutes + taskMinutes;
+                        console.log(`Task ${taskId} completata: aggiunto ${taskMinutes} minuti al tempo totale del progetto`);
+                    }
+
+                    // Ferma il timer se la task viene completata
+                    stopTaskTimer(taskId);
                 } else {
                     // Se la task viene ripristinata, rimuovi la data di completamento
                     updateData.completed_at = null;
+
+                    // Riavvia il timer se la task ha il timer abilitato
+                    const { data: taskInfo, error: taskInfoError } = await supabase
+                        .from('tasks')
+                        .select('timer_enabled')
+                        .eq('id', taskId)
+                        .single();
+
+                    if (!taskInfoError && taskInfo && taskInfo.timer_enabled) {
+                        startTaskTimer(taskId);
+                    }
                 }
 
                 // Ottieni i dati della task prima di aggiornare
@@ -2640,7 +2726,19 @@
                 // Ricarica le task per aggiornare l'interfaccia
                 await loadTasks();
 
+                // Forza l'aggiornamento delle statistiche immediatamente dopo aver completato una task
                 if (completedState) {
+                    // Ottieni tutte le task del progetto corrente per aggiornare le statistiche
+                    let query = supabase.from('tasks').select('*');
+                    if (currentProjectId !== 'all') {
+                        query = query.eq('project_id', currentProjectId);
+                    }
+                    const { data: allTasks, error: statsError } = await query;
+                    if (!statsError && allTasks) {
+                        // Aggiorna le statistiche con i dati più recenti
+                        updateInfoStats(allTasks);
+                    }
+
                     if (taskData && taskData.is_daily) {
                         showStatus('Task completata - riapparirà domani', 'success');
                     } else {
@@ -2784,6 +2882,114 @@
             // Assicurati che la connessione a Supabase e il controllo delle task giornaliere
             // siano stati completati prima di procedere
             await connectToSupabase();
+
+            // Inizializza il database e ripristina i timer
+            try {
+                await initializeTimerDatabase();
+                console.log("Database dei timer inizializzato");
+
+                // Attendi un momento per essere sicuri che le task siano caricate
+                setTimeout(async () => {
+                    await restoreTimersFromLocalStorage();
+                }, 2000);
+            } catch (err) {
+                console.error("Errore nell'inizializzazione del database dei timer:", err);
+            }
+
+            // Aggiungi un evento da tastiera per verificare i timer (Ctrl+Shift+T)
+            document.addEventListener('keydown', function (e) {
+                if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+                    e.preventDefault();
+                    // Verifica e mostra i timer salvati
+                    checkSavedTimers().then(data => {
+                        // Crea un popup di debug
+                        const debugDiv = document.createElement('div');
+                        debugDiv.style.position = 'fixed';
+                        debugDiv.style.top = '20px';
+                        debugDiv.style.left = '20px';
+                        debugDiv.style.backgroundColor = '#171717';
+                        debugDiv.style.border = '1px solid #C47162';
+                        debugDiv.style.borderRadius = '8px';
+                        debugDiv.style.padding = '15px';
+                        debugDiv.style.zIndex = '9999';
+                        debugDiv.style.color = 'white';
+                        debugDiv.style.maxHeight = '80vh';
+                        debugDiv.style.overflow = 'auto';
+
+                        // Aggiungi un titolo
+                        const titleDiv = document.createElement('div');
+                        titleDiv.textContent = 'Report Timer Salvati';
+                        titleDiv.style.fontSize = '16px';
+                        titleDiv.style.fontWeight = 'bold';
+                        titleDiv.style.marginBottom = '10px';
+                        titleDiv.style.borderBottom = '1px solid #C47162';
+                        titleDiv.style.paddingBottom = '5px';
+                        debugDiv.appendChild(titleDiv);
+
+                        // Aggiungi i dati in una tabella
+                        const tableDiv = document.createElement('table');
+                        tableDiv.style.borderCollapse = 'collapse';
+                        tableDiv.style.width = '100%';
+
+                        // Intestazione tabella
+                        const thead = document.createElement('thead');
+                        const headerRow = document.createElement('tr');
+                        ['ID', 'Task', 'Secondi', 'Tempo', 'Attivo'].forEach(text => {
+                            const th = document.createElement('th');
+                            th.textContent = text;
+                            th.style.padding = '8px';
+                            th.style.textAlign = 'left';
+                            th.style.borderBottom = '1px solid #444';
+                            headerRow.appendChild(th);
+                        });
+                        thead.appendChild(headerRow);
+                        tableDiv.appendChild(thead);
+
+                        // Corpo tabella
+                        const tbody = document.createElement('tbody');
+                        data.forEach(task => {
+                            const row = document.createElement('tr');
+
+                            // Crea le celle
+                            [
+                                task.id,
+                                task.content,
+                                task.timer_seconds || 0,
+                                formatTime(task.timer_seconds || 0),
+                                task.timer_enabled ? 'Sì' : 'No'
+                            ].forEach(text => {
+                                const td = document.createElement('td');
+                                td.textContent = text;
+                                td.style.padding = '8px';
+                                td.style.borderBottom = '1px solid #333';
+                                row.appendChild(td);
+                            });
+
+                            tbody.appendChild(row);
+                        });
+                        tableDiv.appendChild(tbody);
+                        debugDiv.appendChild(tableDiv);
+
+                        // Aggiungi pulsante di chiusura
+                        const closeButton = document.createElement('button');
+                        closeButton.textContent = 'Chiudi';
+                        closeButton.style.backgroundColor = '#C47162';
+                        closeButton.style.color = 'white';
+                        closeButton.style.border = 'none';
+                        closeButton.style.padding = '8px 15px';
+                        closeButton.style.borderRadius = '4px';
+                        closeButton.style.marginTop = '15px';
+                        closeButton.style.cursor = 'pointer';
+                        closeButton.addEventListener('click', () => {
+                            document.body.removeChild(debugDiv);
+                        });
+                        debugDiv.appendChild(closeButton);
+
+                        // Aggiungi alla pagina
+                        document.body.appendChild(debugDiv);
+                    });
+                }
+            });
         });
 
         // ... existing code ...
@@ -3088,6 +3294,21 @@
                                 }
                             }
 
+                            // Aggiorna lo stato e il valore del timer
+                            const timerEnabled = document.getElementById('timerToggle').checked;
+                            updateData.timer_enabled = timerEnabled;
+                            if (timerEnabled) {
+                                updateData.timer_seconds = timerSeconds;
+                                // Salva il task corrente come task del timer
+                                currentTimerTaskId = currentEditingTaskId;
+                            } else {
+                                updateData.timer_seconds = 0;
+                                // Se disattiviamo il timer, non teniamo più traccia del task
+                                if (currentTimerTaskId === currentEditingTaskId) {
+                                    currentTimerTaskId = null;
+                                }
+                            }
+
                             // Esegui l'aggiornamento
                             const { error } = await supabase
                                 .from('tasks')
@@ -3121,6 +3342,9 @@
 
                     // Mostra il messaggio di conferma
                     showStatus('Impostazioni salvate', 'success');
+
+                    // Riporta il focus sull'input delle task
+                    focusTaskInput();
 
                     // Ripristina il selettore di priorità se c'è testo nell'input
                     const taskInput = document.getElementById('taskInput');
@@ -3267,6 +3491,39 @@
             document.getElementById('taskMinutes').value = '';
             document.getElementById('dailyToggle').checked = false;
 
+            // Riabilita la sezione del tempo
+            const timeSection = document.getElementById('timeSettingsRow');
+            if (timeSection) {
+                timeSection.classList.remove('time-disabled');
+            }
+
+            // Reset timer settings - rendi il timer modificabile
+            const timerToggle = document.getElementById('timerToggle');
+            timerToggle.checked = false; // Timer disattivato di default
+            timerToggle.disabled = false; // Rendi il toggle interattivo
+
+            const timerLabel = document.getElementById('timerLabel');
+            const timerDisplay = document.getElementById('timerDisplay');
+            if (timerLabel && timerDisplay) {
+                timerLabel.style.display = 'inline';
+                timerDisplay.style.display = 'none';
+            }
+
+            // Ferma il timer di visualizzazione se attivo
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+
+            // Ferma il salvataggio periodico
+            if (timerSaveInterval) {
+                clearInterval(timerSaveInterval);
+                timerSaveInterval = null;
+            }
+
+            timerSeconds = 0;
+            currentTimerTaskId = null;
+
             // Resetta la descrizione
             currentTaskDescription = '';
 
@@ -3290,13 +3547,690 @@
             savedTaskMinutes = 0;
         }
 
-        // Dopo aver aggiunto con successo una task, resetta le impostazioni
-        document.getElementById('addTaskButton').addEventListener('click', function () {
-            if (currentEditingTaskId === null) {
-                // Solo se stiamo aggiungendo una nuova task, non se stiamo modificando
-                resetTaskSettings();
+        // Variabili per il timer
+        let timerInterval = null;
+        let timerSeconds = 0;
+        let timerSaveInterval = null;
+        let currentTimerTaskId = null;
+        let activeTimers = new Map(); // Mappa per tenere traccia dei timer attivi per ogni task
+
+        // Oggetto per tenere traccia dell'ultimo stato salvato per ogni task
+        let lastSavedStates = new Map();
+
+        // Riferimento al database IndexedDB
+        let timerDB = null;
+
+        // Inizializza IndexedDB
+        function initializeTimerDatabase() {
+            return new Promise((resolve, reject) => {
+                if (timerDB) {
+                    resolve(timerDB);
+                    return;
+                }
+
+                console.log("Inizializzazione database IndexedDB per i timer...");
+                const request = indexedDB.open("TimerDatabase", 1);
+
+                request.onerror = (event) => {
+                    console.error("Errore nell'apertura del database:", event.target.error);
+                    reject(event.target.error);
+                };
+
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    console.log("Creazione/aggiornamento schema del database...");
+
+                    // Crea lo store per i timer se non esiste
+                    if (!db.objectStoreNames.contains("timers")) {
+                        const timerStore = db.createObjectStore("timers", { keyPath: "taskId" });
+                        timerStore.createIndex("modifiedAt", "modifiedAt", { unique: false });
+                        timerStore.createIndex("synced", "synced", { unique: false });
+                        console.log("Store 'timers' creato con successo");
+                    }
+                };
+
+                request.onsuccess = (event) => {
+                    timerDB = event.target.result;
+                    console.log("Database IndexedDB inizializzato con successo");
+
+                    // Gestisci gli errori del database
+                    timerDB.onerror = (event) => {
+                        console.error("Errore del database:", event.target.error);
+                    };
+
+                    resolve(timerDB);
+                };
+            });
+        }
+
+        // Funzione per salvare un timer nel database locale
+        function saveTimerToLocalStorage(taskId, seconds) {
+            return new Promise((resolve, reject) => {
+                if (!timerDB) {
+                    return initializeTimerDatabase()
+                        .then(db => saveTimerToLocalStorage(taskId, seconds))
+                        .then(resolve)
+                        .catch(reject);
+                }
+
+                try {
+                    const transaction = timerDB.transaction(["timers"], "readwrite");
+                    const store = transaction.objectStore("timers");
+
+                    const timerData = {
+                        taskId: taskId,
+                        seconds: seconds,
+                        modifiedAt: Date.now(),
+                        synced: false
+                    };
+
+                    const request = store.put(timerData);
+
+                    request.onsuccess = () => {
+                        console.log(`Timer salvato localmente per task ${taskId}: ${seconds} secondi`);
+                        resolve(timerData);
+                    };
+
+                    request.onerror = (event) => {
+                        console.error(`Errore nel salvataggio locale per task ${taskId}:`, event.target.error);
+                        reject(event.target.error);
+                    };
+
+                    transaction.oncomplete = () => {
+                        // Transazione completata
+                    };
+
+                    transaction.onerror = (event) => {
+                        console.error("Errore nella transazione IndexedDB:", event.target.error);
+                        reject(event.target.error);
+                    };
+                } catch (err) {
+                    console.error("Eccezione durante il salvataggio locale:", err);
+                    reject(err);
+                }
+            });
+        }
+
+        // Funzione per ottenere un timer dal database locale
+        function getTimerFromLocalStorage(taskId) {
+            return new Promise((resolve, reject) => {
+                if (!timerDB) {
+                    return initializeTimerDatabase()
+                        .then(db => getTimerFromLocalStorage(taskId))
+                        .then(resolve)
+                        .catch(reject);
+                }
+
+                try {
+                    const transaction = timerDB.transaction(["timers"], "readonly");
+                    const store = transaction.objectStore("timers");
+                    const request = store.get(taskId);
+
+                    request.onsuccess = (event) => {
+                        const result = event.target.result;
+                        console.log(`Timer recuperato localmente per task ${taskId}:`, result);
+                        resolve(result || null);
+                    };
+
+                    request.onerror = (event) => {
+                        console.error(`Errore nel recupero locale per task ${taskId}:`, event.target.error);
+                        reject(event.target.error);
+                    };
+                } catch (err) {
+                    console.error("Eccezione durante il recupero locale:", err);
+                    reject(err);
+                }
+            });
+        }
+
+        // Funzione per ottenere tutti i timer dal database locale
+        function getAllTimersFromLocalStorage() {
+            return new Promise((resolve, reject) => {
+                if (!timerDB) {
+                    return initializeTimerDatabase()
+                        .then(db => getAllTimersFromLocalStorage())
+                        .then(resolve)
+                        .catch(reject);
+                }
+
+                try {
+                    const transaction = timerDB.transaction(["timers"], "readonly");
+                    const store = transaction.objectStore("timers");
+                    const request = store.getAll();
+
+                    request.onsuccess = (event) => {
+                        const result = event.target.result;
+                        console.log(`Recuperati ${result.length} timer dal database locale`);
+                        resolve(result || []);
+                    };
+
+                    request.onerror = (event) => {
+                        console.error("Errore nel recupero di tutti i timer:", event.target.error);
+                        reject(event.target.error);
+                    };
+                } catch (err) {
+                    console.error("Eccezione durante il recupero di tutti i timer:", err);
+                    reject(err);
+                }
+            });
+        }
+
+        // Funzione per verificare se è necessario salvare lo stato del timer
+        function shouldSaveTimer(taskId, seconds) {
+            // Se non esiste uno stato salvato in precedenza, salva subito
+            if (!lastSavedStates.has(taskId)) {
+                return true;
+            }
+
+            const lastState = lastSavedStates.get(taskId);
+
+            // Salva se sono passati più di 5 minuti dall'ultimo salvataggio (forzato)
+            if (Date.now() - lastState.timestamp > 300000) {
+                console.log(`Forzando salvataggio del timer per task ${taskId} (ultimo salvataggio: ${new Date(lastState.timestamp).toLocaleTimeString()})`);
+                return true;
+            }
+
+            // Salva se i secondi sono cambiati
+            if (seconds !== lastState.seconds) {
+                return true;
+            }
+
+            // Nessun cambiamento significativo
+            return false;
+        }
+
+        // Funzione per aggiornare lo stato salvato
+        function updateSavedState(taskId, seconds) {
+            lastSavedStates.set(taskId, {
+                taskId,
+                seconds,
+                timestamp: Date.now()
+            });
+            console.log(`Stato timer aggiornato per task ${taskId}: ${seconds} secondi, timestamp: ${new Date().toLocaleTimeString()}`);
+        }
+
+        // Funzione per avviare il timer per una task specifica
+        function startTaskTimer(taskId, initialSecondsValue = null) {
+            if (!taskId) {
+                console.error("startTaskTimer: ID task non valido");
+                return;
+            }
+
+            // Controlla se esiste già un timer attivo per questa task
+            if (activeTimers.has(taskId)) {
+                console.log(`Timer già attivo per task ${taskId}, non verrà riavviato`);
+                return;
+            }
+
+            console.log(`Avvio timer per task ${taskId}`);
+
+            // Se abbiamo già un valore iniziale, usa quello
+            if (initialSecondsValue !== null) {
+                createTaskTimer(taskId, initialSecondsValue);
+                return;
+            }
+
+            // Altrimenti, recupera il valore del timer salvato per questa task
+            supabase
+                .from('tasks')
+                .select('timer_seconds, timer_enabled')
+                .eq('id', taskId)
+                .single()
+                .then(({ data, error }) => {
+                    if (error) {
+                        console.error("Errore nel recupero del timer:", error);
+                        return;
+                    }
+
+                    // Verifica che il timer sia effettivamente abilitato
+                    if (!data.timer_enabled) {
+                        console.log(`Timer non abilitato per task ${taskId}, non verrà avviato`);
+                        return;
+                    }
+
+                    // Inizia con i secondi esistenti o 0
+                    const initialSeconds = data && data.timer_seconds ? data.timer_seconds : 0;
+                    console.log(`Timer iniziale per task ${taskId}: ${initialSeconds} secondi`);
+
+                    createTaskTimer(taskId, initialSeconds);
+                })
+                .catch(err => {
+                    console.error("Errore nella query per il timer:", err);
+                });
+        }
+
+        // Funzione di supporto per creare un oggetto timer
+        function createTaskTimer(taskId, initialSeconds) {
+            try {
+                // Crea un oggetto timer per questa task
+                const taskTimer = {
+                    taskId: taskId,
+                    seconds: initialSeconds,
+                    interval: setInterval(() => {
+                        // Incrementa il timer ogni secondo
+                        taskTimer.seconds++;
+
+                        // Verifica ogni 30 secondi se è necessario salvare
+                        if (taskTimer.seconds % 30 === 0) {
+                            if (shouldSaveTimer(taskId, taskTimer.seconds)) {
+                                // Prima salva localmente
+                                saveTimerToLocalStorage(taskId, taskTimer.seconds)
+                                    .then(() => {
+                                        // Poi sincronizza con Supabase
+                                        return saveTimerToSupabase(taskId, taskTimer.seconds);
+                                    })
+                                    .then(() => {
+                                        updateSavedState(taskId, taskTimer.seconds);
+                                    })
+                                    .catch(err => {
+                                        console.error(`Errore salvando il timer per task ${taskId}:`, err);
+                                    });
+                            } else {
+                                console.log(`Saltato salvataggio per task ${taskId}: nessun cambiamento significativo`);
+                            }
+                        }
+                    }, 1000),
+                    saveInterval: setInterval(() => {
+                        // Backup salvataggio ogni 5 minuti indipendentemente dai cambiamenti
+                        saveTimerToLocalStorage(taskId, taskTimer.seconds)
+                            .then(() => {
+                                return saveTimerToSupabase(taskId, taskTimer.seconds);
+                            })
+                            .then(() => {
+                                updateSavedState(taskId, taskTimer.seconds);
+                            })
+                            .catch(err => {
+                                console.error(`Errore nel backup del timer per task ${taskId}:`, err);
+                            });
+                    }, 300000) // 5 minuti
+                };
+
+                // Salva il timer nella mappa
+                activeTimers.set(taskId, taskTimer);
+                console.log(`Timer avviato correttamente per task ${taskId}`);
+            } catch (err) {
+                console.error("Errore nell'avvio del timer:", err);
+            }
+        }
+
+        // Funzione per fermare il timer di una task
+        function stopTaskTimer(taskId) {
+            if (!taskId) {
+                console.error("stopTaskTimer: ID task non valido");
+                return;
+            }
+
+            if (!activeTimers.has(taskId)) {
+                console.log(`Nessun timer attivo trovato per task ${taskId}`);
+                return;
+            }
+
+            console.log(`Arresto timer per task ${taskId}`);
+
+            try {
+                // Ottieni il timer dalla mappa
+                const taskTimer = activeTimers.get(taskId);
+
+                // Ferma gli intervalli
+                clearInterval(taskTimer.interval);
+                clearInterval(taskTimer.saveInterval);
+
+                // Salva il valore finale
+                saveTimerToSupabase(taskId, taskTimer.seconds)
+                    .then(() => {
+                        console.log(`Timer per task ${taskId} arrestato e salvato: ${taskTimer.seconds} secondi`);
+                    })
+                    .catch(err => {
+                        console.error(`Errore nel salvataggio finale del timer per task ${taskId}:`, err);
+                    });
+
+                // Rimuovi il timer dalla mappa
+                activeTimers.delete(taskId);
+            } catch (err) {
+                console.error(`Errore nell'arresto del timer per task ${taskId}:`, err);
+                // Rimuovi comunque il timer dalla mappa per evitare problemi
+                activeTimers.delete(taskId);
+            }
+        }
+
+        // Funzione per salvare il timer su Supabase
+        async function saveTimerToSupabase(taskId, seconds) {
+            if (!taskId) {
+                console.error("saveTimerToSupabase: ID task non valido");
+                return Promise.reject(new Error("ID task non valido"));
+            }
+
+            // Controlla che il timer sia ancora abilitato prima di salvare
+            try {
+                // Verifica che la task esista ancora e abbia il timer abilitato
+                const { data: taskData, error: checkError } = await supabase
+                    .from('tasks')
+                    .select('timer_enabled, completed')
+                    .eq('id', taskId)
+                    .single();
+
+                if (checkError) {
+                    console.error(`Errore nella verifica della task ${taskId}:`, checkError);
+                    return Promise.reject(checkError);
+                }
+
+                // Non salvare se la task è completata o il timer è disabilitato
+                if (taskData.completed) {
+                    console.log(`Task ${taskId} completata, timer non salvato`);
+                    return Promise.resolve({ taskId, seconds, saved: false, reason: 'task_completed' });
+                }
+
+                if (!taskData.timer_enabled) {
+                    console.log(`Timer disabilitato per task ${taskId}, timer non salvato`);
+                    return Promise.resolve({ taskId, seconds, saved: false, reason: 'timer_disabled' });
+                }
+
+                console.log(`DEBUG: Salvando timer per task ${taskId}: ${seconds} secondi`);
+                const { data, error } = await supabase
+                    .from('tasks')
+                    .update({ timer_seconds: seconds })
+                    .eq('id', taskId)
+                    .select();
+
+                if (error) {
+                    console.error(`Errore nel salvataggio del timer per task ${taskId}:`, error);
+                    return Promise.reject(error);
+                }
+
+                console.log(`DEBUG: Timer salvato con successo per task ${taskId}. Risposta:`, data);
+                return Promise.resolve({ taskId, seconds, saved: true, data });
+            } catch (error) {
+                console.error(`Eccezione nel salvataggio del timer per task ${taskId}:`, error);
+                return Promise.reject(error);
+            }
+        }
+
+        // Funzione per formattare il tempo nel formato 00:00:00
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
+            const minutes = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+            return `${hours}:${minutes}:${secs}`;
+        }
+
+        // Gestione del toggle del timer nel popup delle impostazioni
+        document.getElementById('timerToggle').addEventListener('change', function (event) {
+            const timerLabel = document.getElementById('timerLabel');
+            const timerDisplay = document.getElementById('timerDisplay');
+            const timeSection = document.getElementById('timeSettingsRow');
+
+            if (this.checked) {
+                // Timer attivato visivamente
+                timerLabel.style.display = 'none';
+                timerDisplay.style.display = 'inline';
+                timerDisplay.textContent = '00:00:00';
+
+                // Disabilita la sezione del tempo
+                if (timeSection) {
+                    timeSection.classList.add('time-disabled');
+                }
+
+                // Avvia il timer SOLO visuale per il popup (non per il conteggio effettivo)
+                // Ferma prima qualsiasi timer visuale esistente
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                }
+
+                timerSeconds = 0;
+                timerInterval = setInterval(() => {
+                    timerSeconds++;
+                    timerDisplay.textContent = formatTime(timerSeconds);
+                }, 1000);
+            } else {
+                // Timer disattivato
+                timerLabel.style.display = 'inline';
+                timerDisplay.style.display = 'none';
+
+                // Riabilita la sezione del tempo
+                if (timeSection) {
+                    timeSection.classList.remove('time-disabled');
+                }
+
+                // Ferma il timer visuale
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                }
+
+                // Ferma il salvataggio periodico se esiste
+                if (timerSaveInterval) {
+                    clearInterval(timerSaveInterval);
+                    timerSaveInterval = null;
+                }
+
+                timerSeconds = 0;
             }
         });
+
+        // ... existing code ...
+        // Funzione per verificare i timer salvati
+        async function checkSavedTimers() {
+            try {
+                console.log("Verificando i timer salvati su Supabase...");
+
+                // Ottieni tutte le task non completate che hanno un timer
+                const { data, error } = await supabase
+                    .from('tasks')
+                    .select('id, content, timer_seconds, timer_enabled')
+                    .eq('completed', false);
+
+                if (error) throw error;
+
+                // Mostra i risultati
+                console.log("REPORT TIMER SALVATI:");
+                console.table(data.map(task => ({
+                    'ID': task.id,
+                    'Task': task.content,
+                    'Secondi': task.timer_seconds || 0,
+                    'Tempo formattato': formatTime(task.timer_seconds || 0),
+                    'Timer attivo': task.timer_enabled ? 'Sì' : 'No'
+                })));
+
+                return data;
+            } catch (error) {
+                console.error("Errore durante il controllo dei timer:", error);
+                return [];
+            }
+        }
+
+        // Aggiungi un comando per verificare i timer dalla console
+        window.checkTimers = checkSavedTimers;
+        // ... existing code ...
+
+        // Inizializza il database e aggiungi gestione chiusura app
+        document.addEventListener('DOMContentLoaded', function () {
+            // Inizializza il database IndexedDB
+            initializeTimerDatabase()
+                .then(() => {
+                    console.log("IndexedDB inizializzato correttamente");
+                })
+                .catch(err => {
+                    console.error("Errore nell'inizializzazione di IndexedDB:", err);
+                });
+
+            // Aggiungi gestore per beforeunload (chiusura app/browser)
+            window.addEventListener('beforeunload', async function (event) {
+                console.log("App in chiusura, salvataggio timer...");
+
+                // Ferma l'evento per dare tempo di salvare
+                event.preventDefault();
+
+                // Salva tutti i timer attivi
+                const savePromises = [];
+
+                activeTimers.forEach((timer, taskId) => {
+                    console.log(`Salvataggio timer per task ${taskId} prima della chiusura: ${timer.seconds} secondi`);
+                    savePromises.push(
+                        saveTimerToLocalStorage(taskId, timer.seconds)
+                            .then(() => saveTimerToSupabase(taskId, timer.seconds))
+                    );
+                });
+
+                try {
+                    await Promise.all(savePromises);
+                    console.log("Tutti i timer salvati con successo prima della chiusura");
+                } catch (err) {
+                    console.error("Errore nel salvataggio dei timer prima della chiusura:", err);
+                }
+
+                // Rimuovi il blocco dopo il salvataggio
+                delete event.returnValue;
+            });
+        });
+
+        // Funzione per ripristinare i timer salvati quando l'app viene riaperta
+        async function restoreTimersFromLocalStorage() {
+            try {
+                console.log("Ripristino timer salvati in locale...");
+
+                // Recupera tutti i timer dal database locale
+                const savedTimers = await getAllTimersFromLocalStorage();
+                console.log(`Trovati ${savedTimers.length} timer salvati`);
+
+                // Ripristina solo i timer per le task non completate
+                const activeTasks = await getActiveTasksFromSupabase();
+
+                // Crea una mappa delle task attive per facilitare la ricerca
+                const activeTaskMap = new Map();
+                activeTasks.forEach(task => {
+                    activeTaskMap.set(task.id, task);
+                });
+
+                // Ripristina solo i timer per le task non completate
+                for (const timer of savedTimers) {
+                    const taskId = timer.taskId;
+
+                    // Verifica se la task esiste ancora ed è attiva
+                    if (activeTaskMap.has(taskId)) {
+                        const task = activeTaskMap.get(taskId);
+
+                        // Se il timer è abilitato e la task non è completata
+                        if (task.timer_enabled && !task.completed) {
+                            console.log(`Ripristino timer per task ${taskId}: ${timer.seconds} secondi`);
+
+                            // Avvia il timer con i secondi salvati
+                            startTaskTimer(taskId, timer.seconds);
+                        } else {
+                            console.log(`Timer non ripristinato per task ${taskId}: timer disabilitato o task completata`);
+                        }
+                    } else {
+                        console.log(`Timer non ripristinato per task ${taskId}: task non trovata o completata`);
+                    }
+                }
+
+                console.log("Ripristino timer completato");
+            } catch (err) {
+                console.error("Errore nel ripristino dei timer:", err);
+            }
+        }
+
+        // Funzione per ottenere le task attive da Supabase
+        async function getActiveTasksFromSupabase() {
+            try {
+                const { data, error } = await supabase
+                    .from('tasks')
+                    .select('id, timer_enabled, completed')
+                    .eq('completed', false);
+
+                if (error) throw error;
+
+                console.log(`Trovate ${data.length} task attive su Supabase`);
+                return data || [];
+            } catch (err) {
+                console.error("Errore nel recupero delle task attive da Supabase:", err);
+                return [];
+            }
+        }
+
+        // Aggiungi listener ai pulsanti
+        document.addEventListener('DOMContentLoaded', function () {
+            // Aggiungi solo un event listener al pulsante addTask
+            const addTaskButton = document.getElementById('addTaskButton');
+            if (addTaskButton) {
+                // Rimuovi eventuali altri event listener
+                addTaskButton.replaceWith(addTaskButton.cloneNode(true));
+
+                // Aggiungi un solo event listener
+                document.getElementById('addTaskButton').addEventListener('click', function () {
+                    // Esegui l'azione principale
+                    addTask();
+
+                    // Dopo aver aggiunto con successo una task, resetta le impostazioni
+                    if (currentEditingTaskId === null) {
+                        // Solo se stiamo aggiungendo una nuova task, non se stiamo modificando
+                        resetTaskSettings();
+                    }
+                });
+                console.log("Event listener aggiunto al pulsante addTask");
+            }
+
+            // Aggiungi event listener al pulsante projects-trigger
+            const projectsTrigger = document.querySelector('.projects-trigger');
+            if (projectsTrigger) {
+                // Rimuovi eventuali listener precedenti per evitare duplicazioni
+                const newProjectsTrigger = projectsTrigger.cloneNode(true);
+                projectsTrigger.parentNode.replaceChild(newProjectsTrigger, projectsTrigger);
+
+                // Assicurati che il menu progetti sia inizialmente chiuso
+                const projectsContent = document.querySelector('.projects-content');
+                projectsContent.classList.remove('visible');
+                projectsContent.classList.remove('active');
+
+                // Aggiungi l'event listener al nuovo elemento
+                newProjectsTrigger.addEventListener('click', function (event) {
+                    event.stopPropagation();
+                    const projectsContent = document.querySelector('.projects-content');
+                    projectsContent.classList.toggle('active');
+                    console.log("Toggle menu progetti");
+                });
+
+                // Chiudi il menu quando si clicca altrove
+                document.addEventListener('click', function (event) {
+                    const projectsContent = document.querySelector('.projects-content');
+                    if (projectsContent && !event.target.closest('.projects-container')) {
+                        projectsContent.classList.remove('active');
+                    }
+                });
+            }
+
+            document.getElementById('completedTasksButton').addEventListener('click', toggleCompletedTasks);
+
+            window.addEventListener('click', function (event) {
+                // ... existing code ...
+            });
+        });
+
+        // ... existing code ...
+        // Gestisci il focus automatico sull'input
+        function focusTaskInput() {
+            const taskInput = document.getElementById('taskInput');
+            if (taskInput) {
+                taskInput.focus();
+                taskInput.select();
+            }
+        }
+
+        // Focus iniziale quando il DOM è caricato
+        document.addEventListener('DOMContentLoaded', () => {
+            focusTaskInput();
+        });
+
+        // Focus quando la finestra viene mostrata
+        window.electronAPI.onFocusInput(() => {
+            focusTaskInput();
+        });
+
+        // IMPORTANTE: Rimuoviamo questo event listener che causa duplicazione
+        // Lasciamo solo quello che verrà aggiunto più tardi nel codice
+        // document.getElementById('addTaskButton').addEventListener('click', addTask);
+
+        // Variabili globali
+        // ... existing code ...
     </script>
 </body>
 

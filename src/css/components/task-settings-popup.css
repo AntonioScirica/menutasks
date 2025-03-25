@@ -220,4 +220,25 @@ input:checked + .toggle-slider:before {
 
 .close-description-btn:hover {
     color: rgba(255, 255, 255, 0.7);
+}
+
+/* Stile per il timer display */
+#timerDisplay {
+    font-family: monospace;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    color: #C47162;
+}
+
+/* Stile per la sezione del tempo disabilitata quando il timer è attivo */
+.time-disabled {
+    opacity: 0.3;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+/* Stile per il toggle disabilitato */
+.toggle-switch input:disabled + .toggle-slider {
+    opacity: 0.8;
+    cursor: not-allowed;
 } 

@@ -2435,6 +2435,9 @@
             const prioritySelector = document.querySelector('.priority-selector');
             const taskInput = document.getElementById('taskInput');
 
+            // Flag per ricordare lo stato del selettore prima di aprire il popup delle impostazioni
+            let wasPrioritySelectorVisible = false;
+
             // Imposta la priorità di default
             setPriority('normal');
 
@@ -2442,9 +2445,11 @@
             // e SOLO per l'input principale, non per le subtask
             taskInput.addEventListener('input', () => {
                 if (taskInput.value.trim() !== '') {
+                    // Mostra il selettore solo se non è già visibile
                     prioritySelector.classList.add('visible');
                     taskInput.closest('.task-input-container').classList.add('has-text');
                 } else {
+                    // Nascondi il selettore se l'input è vuoto
                     prioritySelector.classList.remove('visible');
                     taskInput.closest('.task-input-container').classList.remove('has-text');
                     // Resetta la priorità a "normal" quando il testo viene cancellato
@@ -2452,22 +2457,34 @@
                 }
             });
 
-            // Nascondi il selettore quando l'input perde il focus
-            taskInput.addEventListener('blur', () => {
-                // Aggiungiamo un breve ritardo per permettere all'utente di cliccare un'opzione
-                setTimeout(() => {
-                    if (!prioritySelector.contains(document.activeElement)) {
-                        prioritySelector.classList.remove('visible');
-                    }
-                }, 200);
-            });
-
             // Gestisci la selezione della priorità
             priorityOptions.forEach(option => {
                 option.addEventListener('click', () => {
                     const priority = option.dataset.priority;
                     setPriority(priority);
+
+                    // Nascondi il selettore quando una priorità viene selezionata
+                    prioritySelector.classList.remove('visible');
                 });
+            });
+
+            // Aggiungi un event listener per il popup delle impostazioni
+            const taskSettingsIcon = document.getElementById('taskSettingsIcon');
+            const taskSettingsPopup = document.getElementById('taskSettingsPopup');
+
+            taskSettingsIcon.addEventListener('click', function (event) {
+                // Se il popup delle impostazioni viene aperto
+                if (!taskSettingsPopup.classList.contains('visible')) {
+                    // Salva lo stato del selettore di priorità prima di chiuderlo
+                    wasPrioritySelectorVisible = prioritySelector.classList.contains('visible');
+                    prioritySelector.classList.remove('visible');
+                } else {
+                    // Se il popup delle impostazioni viene chiuso e c'è testo nell'input,
+                    // ripristina lo stato precedente del selettore di priorità
+                    if (wasPrioritySelectorVisible && taskInput.value.trim() !== '') {
+                        prioritySelector.classList.add('visible');
+                    }
+                }
             });
         }
 
@@ -2500,13 +2517,6 @@
             if (taskInput) {
                 // Riporta il focus sull'input
                 taskInput.focus();
-
-                // Verifica se c'è del testo nell'input per mostrare/nascondere l'icona plus e la linea
-                if (taskInput.value.trim() !== '') {
-                    inputContainer.classList.add('has-text');
-                } else {
-                    inputContainer.classList.remove('has-text');
-                }
             }
         }
 
@@ -2844,13 +2854,41 @@
             // Click sull'icona plus per aprire/chiudere il popup
             taskSettingsIcon.addEventListener('click', function (event) {
                 event.stopPropagation(); // Previene che il click si propaghi al document
-                taskSettingsPopup.classList.toggle('visible');
 
-                // Nascondi il selettore di priorità quando si apre il popup delle impostazioni
+                // Flag per ricordare se il popup delle impostazioni sta per essere aperto o chiuso
+                const isOpening = !taskSettingsPopup.classList.contains('visible');
+
+                // Gestisci l'interazione con il selettore di priorità
                 const prioritySelector = document.querySelector('.priority-selector');
-                if (prioritySelector && prioritySelector.classList.contains('visible')) {
-                    prioritySelector.classList.remove('visible');
+                const taskInput = document.getElementById('taskInput');
+                let wasPrioritySelectorVisible = false;
+
+                if (isOpening) {
+                    // Se stiamo aprendo il popup delle impostazioni
+
+                    // Salva lo stato del selettore di priorità prima di chiuderlo
+                    wasPrioritySelectorVisible = prioritySelector && prioritySelector.classList.contains('visible');
+
+                    // Nascondi il selettore di priorità
+                    if (prioritySelector) {
+                        prioritySelector.classList.remove('visible');
+                    }
+
+                    // Salva lo stato in un attributo data per uso futuro
+                    taskSettingsIcon.dataset.prioritySelectorVisible = wasPrioritySelectorVisible ? 'true' : 'false';
+                } else {
+                    // Se stiamo chiudendo il popup delle impostazioni
+
+                    // Ripristina lo stato del selettore di priorità se necessario
+                    const wasVisible = taskSettingsIcon.dataset.prioritySelectorVisible === 'true';
+                    if (wasVisible && taskInput && taskInput.value.trim() !== '' && prioritySelector) {
+                        // Rimostra il selettore se c'è testo nell'input
+                        prioritySelector.classList.add('visible');
+                    }
                 }
+
+                // Attiva/disattiva la visibilità del popup
+                taskSettingsPopup.classList.toggle('visible');
 
                 // Se il popup è visibile
                 if (taskSettingsPopup.classList.contains('visible')) {
@@ -3081,7 +3119,18 @@
                     // Chiudi il popup
                     taskSettingsPopup.classList.remove('visible');
 
+                    // Mostra il messaggio di conferma
                     showStatus('Impostazioni salvate', 'success');
+
+                    // Ripristina il selettore di priorità se c'è testo nell'input
+                    const taskInput = document.getElementById('taskInput');
+                    const prioritySelector = document.querySelector('.priority-selector');
+                    if (taskInput && taskInput.value.trim() !== '' && prioritySelector) {
+                        // Riattiva il selettore di priorità
+                        setTimeout(() => {
+                            prioritySelector.classList.add('visible');
+                        }, 100); // Un piccolo ritardo per assicurarsi che il popup sia completamente chiuso
+                    }
                 });
             }
         });

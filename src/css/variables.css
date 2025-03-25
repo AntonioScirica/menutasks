@@ -48,4 +48,7 @@
   --border-radius-sm: 4px;
   --border-radius-md: 5px;
   --border-radius-lg: 8px;
+  
+  /* Colore di sfondo del menu progetti */
+  --projects-menu-bg: var(--color-background);
 } 

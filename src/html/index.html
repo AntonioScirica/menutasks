@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Task Manager</title>
+
+    <!-- Librerie esterne -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- CSS principale -->
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/base.css">
+    <link rel="stylesheet" href="../css/layout.css">
+    <link rel="stylesheet" href="../css/main.css">
+
+    <!-- Componenti CSS -->
+    <link rel="stylesheet" href="../css/components/projects.css">
+    <link rel="stylesheet" href="../css/components/tasks.css">
+    <link rel="stylesheet" href="../css/components/forms.css">
+    <link rel="stylesheet" href="../css/components/subtasks.css">
+    <link rel="stylesheet" href="../css/components/completed-tasks.css">
+    <link rel="stylesheet" href="../css/components/popups.css">
+    <link rel="stylesheet" href="../css/components/task-settings-popup.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="bar">
+            <div class="projects-container">
+                <button class="projects-trigger">
+                    <span id="currentProjectName">Select Project</span>
+                    <i>
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                    </i>
+                </button>
+                <div class="projects-content">
+                    <div id="projectsList">
+                        <!-- I progetti verranno inseriti qui dinamicamente -->
+                    </div>
+                    <div class="divider"></div>
+                    <button class="add-project-menu-button">
+                        <i data-lucide="plus" class="icon-plus"></i>
+                        Add project
+                    </button>
+                </div>
+            </div>
+            <button class="add-project-button" id="addProjectButton">
+                <i data-lucide="plus"></i>
+                Add Project
+            </button>
+
+            <!-- Sezione informativa -->
+            <div class="info-container">
+                <!-- Sezione INFORMATIONS -->
+                <h3 class="info-header">INFORMATIONS</h3>
+                <div class="info-item completed-button" id="completedTasksButton">
+                    <i data-lucide="check-circle" class="icon-check-circle"></i>
+                    <span>Completed</span>
+                    <span class="info-value" id="completedCount">0</span>
+                </div>
+                <div class="info-item">
+                    <i data-lucide="alarm-clock-check" class="icon-alarm-clock-check"></i>
+                    <span>Total time</span>
+                    <span class="info-value" id="totalTime">0m</span>
+                </div>
+
+                <!-- Sezione PRIORITY -->
+                <h3 class="info-header">PRIORITY</h3>
+                <div class="info-item completed-button priority-filter" id="urgentFilter">
+                    <i data-lucide="flame" class="urgent-icon icon-flame"></i>
+                    <span>On Fire</span>
+                    <span class="info-value" id="urgentTasksCount">0</span>
+                </div>
+                <div class="info-item completed-button priority-filter" id="mediumFilter">
+                    <i data-lucide="alert-circle" class="medium-icon icon-alert-circle"></i>
+                    <span>Pressure</span>
+                    <span class="info-value" id="mediumTasksCount">0</span>
+                </div>
+                <div class="info-item completed-button priority-filter" id="basicFilter">
+                    <i data-lucide="circle" class="basic-icon icon-circle"></i>
+                    <span>Chill</span>
+                    <span class="info-value" id="basicTasksCount">0</span>
+                </div>
+            </div>
+
+            <div class="project-input-group" id="projectInputGroup">
+                <input type="text" id="projectInput" class="project-input" placeholder="Nuovo progetto...">
+                <button id="confirmProjectButton">
+                    <i data-lucide="x" class="icon-x"></i>
+                </button>
+            </div>
+        </div>
+        <div class="column_container">
+            <div class="tasks_container">
+                <div class="task-list" id="taskList">
+                    <!-- Le attività verranno visualizzate qui -->
+                </div>
+                <div class="task-list completed-tasks-list" id="completedTasksList" style="display: none;">
+                    <!-- Le attività completate verranno visualizzate qui -->
+                </div>
+                <div class="status-message" id="statusMessage"></div>
+            </div>
+            <div class="">
+                <div class="input-group" id="taskInputGroup">
+                    <div class="task-input-container">
+                        <div class="priority-selector">
+                            <div class="priority-option priority-urgent" data-priority="urgent" title="Urgente"></div>
+                            <div class="priority-option priority-medium" data-priority="medium" title="Media"></div>
+                            <div class="priority-option priority-normal" data-priority="normal" title="Normale"></div>
+                        </div>
+                        <input type="text" id="taskInput" class="task-input"
+                            placeholder="Inserisci una nuova attività...">
+                        <div class="task-input-divider"></div>
+                        <div class="task-input-plus-icon" id="taskSettingsIcon">
+                            <i data-lucide="plus" class="icon-plus"></i>
+                            <div class="task-settings-popup" id="taskSettingsPopup">
+                                <h2>impostazioni</h2>
+                                <div class="settings-row" id="timeSettingsRow">
+                                    <div class="settings-label">Tempo</div>
+                                    <div class="time-inputs">
+                                        <div class="time-input">
+                                            <input type="text" id="taskDays" placeholder="0" value="">
+                                            <div class="time-unit">giorni</div>
+                                        </div>
+                                        <div class="time-input">
+                                            <input type="text" id="taskHours" placeholder="0" value="">
+                                            <div class="time-unit">ore</div>
+                                        </div>
+                                        <div class="time-input">
+                                            <input type="text" id="taskMinutes" placeholder="00" value="">
+                                            <div class="time-unit">min</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-divider"></div>
+                                <div class="settings-row">
+                                    <div class="settings-label">
+                                        <span id="timerLabel">Timer</span>
+                                        <span id="timerDisplay" style="display: none;">00:00:00</span>
+                                    </div>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="timerToggle">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="settings-divider"></div>
+                                <div class="settings-row">
+                                    <div class="settings-label">Giornaliero</div>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="dailyToggle">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="settings-divider"></div>
+                                <div class="settings-row add-description" id="addDescriptionRow">
+                                    <div class="settings-label">+ Aggiungi descrizione</div>
+                                </div>
+                                <div class="settings-row description-row" id="descriptionRow" style="display: none;">
+                                    <div class="description-container">
+                                        <textarea id="taskDescription" class="description-textarea"
+                                            placeholder="Descrizione..."></textarea>
+                                        <div class="close-button-container">
+                                            <button class="close-description-btn" id="closeDescriptionBtn">×</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-divider"></div>
+                                <div class="settings-row save-button-row">
+                                    <button id="saveTimeSettings" class="settings-save-button">Salva</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="addTaskButton">
+                        <i data-lucide="arrow-up" class="icon-arrow-up"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Popup di conferma -->
+    <div class="confirm-popup" id="confirmDeletePopup">
+        <div class="confirm-popup-content">
+            <div class="confirm-popup-title">Delete project</div>
+            <div class="confirm-popup-message">This project contains tasks. Are you sure you want to delete it? This
+                action cannot be undone.</div>
+            <div class="confirm-popup-buttons">
+                <button class="confirm-popup-button back" onclick="closeConfirmPopup()">Back</button>
+                <button class="confirm-popup-button delete" onclick="confirmDeleteProject()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript principale ed esterno -->
+    <script src="../renderer.js"></script>
+
+    <!-- Servizi JavaScript modularizzati -->
+    <script src="../js/services/DatabaseService.js"></script>
+    <script src="../js/services/TimerService.js"></script>
+    <script src="../js/services/SyncService.js"></script>
+
+    <!-- Utilità JavaScript -->
+    <script src="../js/utils/formatters.js"></script>
+    <script src="../js/utils/validators.js"></script>
+
+    <!-- Componenti JavaScript -->
+    <script src="../js/components/Project.js"></script>
+    <script src="../js/components/Task.js"></script>
+    <script src="../js/components/Timer.js"></script>
+
+    <!-- App principale -->
+    <script src="../js/app.js"></script>
+</body>
+
+</html>

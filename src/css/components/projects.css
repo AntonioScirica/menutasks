@@ -194,31 +194,29 @@
 
 /* Contenuto dei progetti */
 .projects-content {
-    display: none;
     position: absolute;
-    top: 0;
-    left: 100%;
-    background-color: var(--color-background);
-    border: 1px solid var(--color-border-light);
-    border-radius: var(--border-radius-sm);
-    margin-left: 8px;
-    z-index: 1000;
-    box-shadow: none;
-    width: 200px;
-    max-height: calc(6 * 40px + 40px); /* Altezza di 6 progetti + altezza del label */
-    overflow-y: auto;
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
+    z-index: 10;
+    top: 100%;
+    left: 0;
+    width: 16rem;
+    max-height: 0;
+    overflow: hidden;
+    background-color: var(--projects-menu-bg);
+    border-radius: 0 0 0.5rem 0.5rem;
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+    transition: max-height 0.3s ease-in-out, opacity 0.3s;
+    opacity: 0;
+    visibility: hidden; /* Assicura che il menu sia nascosto quando non è attivo */
 }
 
-/* Mostra il menu quando ha la classe visible */
+/* Stili espliciti per il menu attivo */
+.projects-content.active,
 .projects-content.visible {
-    display: block;
-}
-
-/* Mostra il menu quando ha la classe active */
-.projects-content.active {
-    display: block;
+    max-height: 20rem; /* Altezza massima aumentata per contenere più progetti */
+    opacity: 1;
+    visibility: visible; /* Forza la visibilità quando attivo */
+    display: block !important; /* Forza il display: block quando attivo */
+    overflow-y: auto; /* Permette lo scrolling se ci sono molti progetti */
 }
 
 /* Area invisibile per mantenere l'hover */

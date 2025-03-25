@@ -43,7 +43,7 @@
     width: 2px;
     height: 20px;
     background-color: var(--color-border);
-    display: none;
+    display: none; /* Nascosto di default */
     z-index: 5;
     border-radius: 24px;
 }
@@ -61,7 +61,7 @@
     background-color: var(--color-border);
 }
 
-/* Mostro la linea divisoria solo quando c'è testo nell'input */
+/* Mostro la linea divisoria SOLO quando c'è testo nell'input */
 .task-input-container.has-text .task-input-divider {
     display: block;
 }
@@ -74,14 +74,14 @@
     transform: translateY(-50%);
     width: 20px;
     height: 20px;
-    display: none;
+    display: none; /* Nascosto di default */
     align-items: center;
     justify-content: center;
     color: var(--color-text-dim);
     z-index: 5;
 }
 
-/* Mostro icona quando c'è testo nell'input */
+/* Mostro icona SOLO quando c'è testo nell'input */
 .task-input-container.has-text .task-input-plus-icon {
     display: flex;
 }
@@ -197,4 +197,25 @@ button:active {
 /* Pulsante add-subtask - nascosto */
 .add-subtask {
     display: none !important;
+}
+
+/* Nasconde l'icona e il divisore di default se non c'è la classe has-text */
+.task-input-container:not(.has-text) .task-input-plus-icon,
+.task-input-container:not(.has-text) .task-input-divider {
+    display: none !important;
+}
+
+/* Regola specifica per assicurarsi che l'icona plus e il divisore siano sempre nascosti all'avvio e finché non c'è testo */
+.task-input-plus-icon,
+.task-input-divider {
+    display: none !important;
+}
+
+/* Solo quando l'input ha la classe has-text, mostra l'icona e il divisore */
+.task-input-container.has-text .task-input-plus-icon {
+    display: flex !important;
+}
+
+.task-input-container.has-text .task-input-divider {
+    display: block !important;
 } 

@@ -195,7 +195,7 @@
 /* Contenuto dei progetti */
 .projects-content {
     position: absolute;
-    z-index: 10;
+    z-index: 1000;
     top: 100%;
     left: 0;
     width: 16rem;
@@ -203,20 +203,21 @@
     overflow: hidden;
     background-color: var(--projects-menu-bg);
     border-radius: 0 0 0.5rem 0.5rem;
-    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.2);
     transition: max-height 0.3s ease-in-out, opacity 0.3s;
     opacity: 0;
-    visibility: hidden; /* Assicura che il menu sia nascosto quando non è attivo */
+    visibility: hidden;
 }
 
 /* Stili espliciti per il menu attivo */
 .projects-content.active,
 .projects-content.visible {
-    max-height: 20rem; /* Altezza massima aumentata per contenere più progetti */
-    opacity: 1;
-    visibility: visible; /* Forza la visibilità quando attivo */
-    display: block !important; /* Forza il display: block quando attivo */
-    overflow-y: auto; /* Permette lo scrolling se ci sono molti progetti */
+    max-height: 20rem !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: block !important;
+    overflow-y: auto !important;
+    pointer-events: auto !important;
 }
 
 /* Area invisibile per mantenere l'hover */

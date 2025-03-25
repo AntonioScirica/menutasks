@@ -1,711 +1,614 @@
 /**
- * Servizio per la gestione dei timer delle task
- * 
- * Gestisce un singolo ciclo di aggiornamento per tutti i timer
- * invece di avere cicli separati per ogni timer
+ * TimerService - Gestisce tutti i timer attivi nell'applicazione
+ * Fornisce un meccanismo centralizzato per aggiornare e sincronizzare i timer
  */
 class TimerService {
     constructor() {
-        this.activeTimers = new Map();
-        this.timerSavedStates = new Map();
-        this.updateInterval = null;
-        this.saveInterval = null;
-        this.initialized = false;
-        this.modalOpen = false;
-        this.currentTaskId = null;
-        this.timerInterval = null;
+        this.timers = {}; // Mappa di tutti i timer attivi: {taskId: timerData}
+        this.intervalId = null; // ID dell'intervallo principale
+        this.isInitialized = false;
+        this.lastSaveTime = 0;
+        this.saveBatchInterval = 60000; // Salvataggio batch ogni 60 secondi
+        this.saveCallbacks = []; // Callback da chiamare quando si salvano i timer
+        this.updateCallbacks = {}; // Callback da chiamare quando si aggiornano i timer
     }
 
     /**
-     * Inizializza il servizio
+     * Inizializza il servizio timer
+     * @param {Object} databaseService - Servizio database per la persistenza
+     * @returns {Promise<void>}
      */
-    initialize() {
-        if (this.initialized) return;
+    async initialize(databaseService) {
+        if (this.isInitialized) {
+            console.log('TimerService: Già inizializzato');
+            return;
+        }
 
-        // Avvia l'intervallo di aggiornamento globale
-        this.startGlobalTimerLoop();
+        console.log('TimerService: Inizializzazione...');
 
-        this.initialized = true;
-        console.log('TimerService inizializzato');
+        // Salva il riferimento al database service
+        this.db = databaseService;
+
+        try {
+            // Carica i timer dal database
+            await this.loadTimers();
+
+            // Avvia il loop principale
+            this.startTimerLoop();
+
+            this.isInitialized = true;
+            console.log('TimerService: Inizializzazione completata');
+        } catch (error) {
+            console.error('TimerService: Errore durante l\'inizializzazione', error);
+            throw error;
+        }
     }
 
     /**
-     * Avvia un timer globale che gestisce tutti i timer attivi
+     * Avvia il loop principale dei timer
      */
-    startGlobalTimerLoop() {
-        // Ferma eventuali intervalli esistenti
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
+    startTimerLoop() {
+        if (this.intervalId !== null) {
+            clearInterval(this.intervalId);
         }
 
-        if (this.saveInterval) {
-            clearInterval(this.saveInterval);
-            this.saveInterval = null;
-        }
+        // Aggiorna i timer ogni secondo
+        this.intervalId = setInterval(() => {
+            this.updateTimers();
 
-        // Intervallo per incrementare tutti i timer ogni secondo
-        this.updateInterval = setInterval(() => {
-            this.activeTimers.forEach((timer, taskId) => {
-                // Incrementa il timer
-                timer.seconds++;
-
-                // Aggiorna eventuali visualizzazioni UI
-                this.updateTimerDisplay(taskId, timer.seconds);
-            });
+            // Verifica se è il momento di salvare i timer
+            const now = Date.now();
+            if (now - this.lastSaveTime >= this.saveBatchInterval) {
+                this.saveTimers();
+                this.lastSaveTime = now;
+            }
         }, 1000);
 
-        // Intervallo per salvare tutti i timer ogni minuto
-        this.saveInterval = setInterval(() => {
-            this.saveAllTimers();
-        }, 60000); // 1 minuto
-
-        console.log('Loop globale timer avviato');
+        console.log('TimerService: Loop timer avviato');
     }
 
     /**
-     * Aggiorna la visualizzazione UI per un timer specifico
-     * @param {string} taskId - ID della task
-     * @param {number} seconds - Secondi da visualizzare
+     * Ferma il loop principale dei timer
      */
-    updateTimerDisplay(taskId, seconds) {
-        // Aggiorna eventuali elementi UI che mostrano questo timer
-        const timerElement = document.querySelector(`#timer-${taskId}`);
-        if (timerElement) {
-            timerElement.textContent = formatTime(seconds);
+    stopTimerLoop() {
+        if (this.intervalId !== null) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
+            console.log('TimerService: Loop timer fermato');
         }
     }
 
     /**
-     * Avvia un timer per una task specifica
-     * @param {string} taskId - ID della task
-     * @param {number|null} initialSeconds - Valore iniziale in secondi (opzionale)
+     * Carica i timer dal database
+     * @returns {Promise<void>}
      */
-    startTaskTimer(taskId, initialSeconds = null) {
-        if (!taskId) {
-            console.error("startTaskTimer: ID task non valido");
+    async loadTimers() {
+        try {
+            // Carica lo stato dei timer dal database
+            const timerState = await this.db.getAppState('activeTimers');
+
+            if (timerState && timerState.value) {
+                this.timers = timerState.value;
+                console.log('TimerService: Timer caricati', Object.keys(this.timers).length);
+            } else {
+                this.timers = {};
+                console.log('TimerService: Nessun timer da caricare');
+            }
+
+            // Inizializza il tempo dell'ultimo salvataggio
+            this.lastSaveTime = Date.now();
+        } catch (error) {
+            console.error('TimerService: Errore durante il caricamento dei timer', error);
+            this.timers = {};
+        }
+    }
+
+    /**
+     * Salva i timer nel database
+     * @returns {Promise<void>}
+     */
+    async saveTimers() {
+        if (!this.db || Object.keys(this.timers).length === 0) {
             return;
         }
 
-        // Se il timer è già attivo, non faccio nulla
-        if (this.activeTimers.has(taskId)) {
-            console.log(`Timer già attivo per task ${taskId}, non verrà riavviato`);
-            return;
-        }
+        try {
+            // Salva lo stato dei timer nel database
+            await this.db.saveAppState('activeTimers', this.timers);
+            console.log('TimerService: Timer salvati', Object.keys(this.timers).length);
 
-        // Se ho un valore iniziale, lo uso
-        if (initialSeconds !== null) {
-            this.createTaskTimer(taskId, initialSeconds);
-            return;
-        }
-
-        // Altrimenti recupero il valore dal database
-        databaseService.supabase
-            .from('tasks')
-            .select('timer_seconds, timer_enabled')
-            .eq('id', taskId)
-            .single()
-            .then(({ data, error }) => {
-                if (error) {
-                    console.error("Errore nel recupero del timer:", error);
-                    return;
+            // Chiama i callback di salvataggio
+            this.saveCallbacks.forEach(callback => {
+                try {
+                    callback(this.timers);
+                } catch (error) {
+                    console.error('TimerService: Errore nel callback di salvataggio', error);
                 }
-
-                // Verifico che il timer sia abilitato
-                if (!data.timer_enabled) {
-                    console.log(`Timer non abilitato per task ${taskId}, non verrà avviato`);
-                    return;
-                }
-
-                // Uso i secondi esistenti o zero
-                const initialSeconds = data?.timer_seconds || 0;
-                console.log(`Timer iniziale per task ${taskId}: ${initialSeconds} secondi`);
-
-                this.createTaskTimer(taskId, initialSeconds);
-            })
-            .catch(err => {
-                console.error("Errore nella query per il timer:", err);
             });
+        } catch (error) {
+            console.error('TimerService: Errore durante il salvataggio dei timer', error);
+        }
     }
 
     /**
-     * Crea un timer per una task
-     * @param {string} taskId - ID della task
-     * @param {number} initialSeconds - Valore iniziale in secondi
+     * Aggiorna tutti i timer attivi
      */
-    createTaskTimer(taskId, initialSeconds) {
-        // Crea un oggetto timer
-        const timer = {
+    updateTimers() {
+        const now = Date.now();
+        let timerUpdated = false;
+
+        // Aggiorna ogni timer attivo
+        for (const taskId in this.timers) {
+            const timer = this.timers[taskId];
+
+            // Verifica se il timer è in pausa
+            if (!timer.running) {
+                continue;
+            }
+
+            // Calcola il tempo trascorso dall'ultimo aggiornamento
+            const elapsed = now - timer.lastUpdateTime;
+            timer.elapsedTime += elapsed;
+            timer.lastUpdateTime = now;
+
+            // Aggiorna lo stato del timer
+            const timeLeft = Math.max(0, timer.duration - timer.elapsedTime);
+
+            // Verifica se il timer è completato
+            if (timeLeft === 0 && timer.running) {
+                timer.running = false;
+                timer.completed = true;
+
+                // Notifica che il timer è completato
+                this.notifyTimerCompleted(taskId, timer);
+            }
+
+            // Invia aggiornamenti per questo timer
+            this.notifyTimerUpdated(taskId, {
+                ...timer,
+                timeLeft
+            });
+
+            timerUpdated = true;
+        }
+
+        // Se almeno un timer è stato aggiornato, forza un salvataggio
+        if (timerUpdated && (now - this.lastSaveTime >= 10000)) { // Salva comunque ogni 10 secondi se c'è attività
+            this.saveTimers();
+            this.lastSaveTime = now;
+        }
+    }
+
+    /**
+     * Avvia un timer per un task
+     * @param {string|number} taskId - ID del task
+     * @param {number} duration - Durata del timer in millisecondi
+     * @param {Object} timerData - Dati aggiuntivi del timer
+     * @returns {Object} - Dati del timer creato
+     */
+    startTimer(taskId, duration, timerData = {}) {
+        const now = Date.now();
+
+        // Crea o aggiorna il timer
+        this.timers[taskId] = {
             taskId,
-            seconds: initialSeconds || 0,
-            startTime: Date.now()
+            duration, // Durata totale in millisecondi
+            elapsedTime: 0, // Tempo trascorso in millisecondi
+            startTime: now, // Orario di avvio
+            lastUpdateTime: now, // Ultimo aggiornamento
+            running: true, // Stato di esecuzione
+            completed: false, // Stato di completamento
+            ...timerData // Eventuali dati aggiuntivi
         };
 
-        // Aggiungo il timer alla mappa dei timer attivi
-        this.activeTimers.set(taskId, timer);
+        console.log(`TimerService: Avviato timer per task ${taskId}, durata ${duration}ms`);
 
-        // Registro lo stato iniziale per il salvataggio
-        this.updateSavedState(taskId, timer.seconds);
+        // Notifica l'avvio del timer
+        this.notifyTimerUpdated(taskId, this.timers[taskId]);
 
-        console.log(`Timer avviato correttamente per task ${taskId}`);
+        // Forza un salvataggio immediato
+        this.saveTimers();
+
+        return this.timers[taskId];
     }
 
     /**
-     * Ferma il timer di una task
-     * @param {string} taskId - ID della task
-     * @returns {Promise<void>}
+     * Mette in pausa un timer
+     * @param {string|number} taskId - ID del task
+     * @returns {Object|null} - Dati del timer aggiornato o null se non trovato
      */
-    async stopTaskTimer(taskId) {
-        if (!taskId || !this.activeTimers.has(taskId)) {
-            console.log(`Nessun timer attivo trovato per task ${taskId}`);
-            return;
+    pauseTimer(taskId) {
+        const timer = this.timers[taskId];
+
+        if (!timer) {
+            console.log(`TimerService: Timer non trovato per task ${taskId}`);
+            return null;
         }
 
-        try {
-            console.log(`Arresto timer per task ${taskId}`);
-
-            // Ottengo il timer
-            const timer = this.activeTimers.get(taskId);
-
-            // Salvo lo stato finale
-            await Promise.all([
-                databaseService.saveTimerToLocalStorage(taskId, timer.seconds),
-                databaseService.saveTimerToSupabase(taskId, timer.seconds)
-            ]);
-
-            console.log(`Timer per task ${taskId} arrestato e salvato: ${timer.seconds} secondi`);
-
-            // Rimuovo il timer dalla mappa
-            this.activeTimers.delete(taskId);
-
-            // Rimuovo lo stato salvato
-            this.timerSavedStates.delete(taskId);
-        } catch (err) {
-            console.error(`Errore nell'arresto del timer per task ${taskId}:`, err);
-            // Rimuovo comunque il timer per evitare problemi
-            this.activeTimers.delete(taskId);
-            this.timerSavedStates.delete(taskId);
-        }
-    }
-
-    /**
-     * Salva tutti i timer attivi
-     * @returns {Promise<void>}
-     */
-    async saveAllTimers() {
-        console.log(`Salvataggio di ${this.activeTimers.size} timer attivi...`);
-
-        const savePromises = [];
-
-        this.activeTimers.forEach((timer, taskId) => {
-            // Verifico se è necessario salvare questo timer
-            if (this.shouldSaveTimer(taskId, timer.seconds)) {
-                console.log(`Salvando timer per task ${taskId}: ${timer.seconds} secondi`);
-
-                // Salva localmente e poi su Supabase
-                const promise = databaseService.saveTimerToLocalStorage(taskId, timer.seconds)
-                    .then(() => databaseService.saveTimerToSupabase(taskId, timer.seconds))
-                    .then(() => {
-                        this.updateSavedState(taskId, timer.seconds);
-                    })
-                    .catch(err => {
-                        console.error(`Errore nel salvataggio del timer per task ${taskId}:`, err);
-                    });
-
-                savePromises.push(promise);
-            }
-        });
-
-        if (savePromises.length > 0) {
-            await Promise.all(savePromises);
-            console.log(`Salvati ${savePromises.length} timer`);
-        } else {
-            console.log('Nessun timer da salvare');
-        }
-    }
-
-    /**
-     * Determina se è necessario salvare un timer
-     * @param {string} taskId - ID della task
-     * @param {number} seconds - Secondi attuali
-     * @returns {boolean} - true se il timer deve essere salvato
-     */
-    shouldSaveTimer(taskId, seconds) {
-        // Ottieni l'ultimo stato salvato
-        const lastState = this.timerSavedStates.get(taskId);
-
-        if (!lastState) {
-            return true; // Salva sempre se non c'è stato precedente
+        if (!timer.running) {
+            console.log(`TimerService: Timer già in pausa per task ${taskId}`);
+            return timer;
         }
 
-        // Se sono passati più di 5 minuti dall'ultimo salvataggio, salva
-        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-        if (lastState.timestamp < fiveMinutesAgo) {
-            return true;
-        }
-
-        // Se i secondi sono cambiati significativamente (più di 10), salva
-        const secondsDiff = Math.abs(seconds - lastState.seconds);
-        return secondsDiff >= 10;
-    }
-
-    /**
-     * Aggiorna lo stato salvato di un timer
-     * @param {string} taskId - ID della task
-     * @param {number} seconds - Secondi attuali
-     */
-    updateSavedState(taskId, seconds) {
-        this.timerSavedStates.set(taskId, {
-            seconds: seconds,
-            timestamp: Date.now()
-        });
-    }
-
-    /**
-     * Inizializza i timer per le task attive
-     * @param {Array} tasks - Lista di task attive
-     */
-    initializeTaskTimers(tasks) {
-        console.log(`Inizializzazione timer per ${tasks.length} task attive...`);
-
-        // Inizializzo solo i timer per le task che non hanno già un timer attivo
-        tasks.forEach(task => {
-            if (!task.completed && !this.activeTimers.has(task.id) && task.timer_enabled) {
-                console.log(`Inizializzando timer per task ${task.id}`);
-                this.startTaskTimer(task.id);
-            }
-        });
-    }
-
-    /**
-     * Arresto e pulizia di tutti i timer
-     * @returns {Promise<void>}
-     */
-    async stopAllTimers() {
-        console.log(`Arresto di ${this.activeTimers.size} timer attivi...`);
-
-        const stopPromises = [];
-
-        this.activeTimers.forEach((timer, taskId) => {
-            stopPromises.push(this.stopTaskTimer(taskId));
-        });
-
-        await Promise.all(stopPromises);
-
-        // Rimuovo gli intervalli globali
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
-        }
-
-        if (this.saveInterval) {
-            clearInterval(this.saveInterval);
-            this.saveInterval = null;
-        }
-
-        console.log('Tutti i timer sono stati fermati');
-    }
-
-    /**
-     * Inizializza i timer per le task attive
-     * @param {Array} tasks - Le task attive
-     */
-    initializeTaskTimers(tasks) {
-        if (!tasks || tasks.length === 0) return;
-
-        tasks.forEach(task => {
-            if (task.time_active && !task.completed) {
-                // Aggiorna il display del timer
-                this.updateTimerDisplay(task.id, task.time_active);
-            }
-        });
-    }
-
-    /**
-     * Aggiorna il display del timer di una task
-     * @param {string} taskId - ID della task
-     * @param {number} seconds - Secondi trascorsi
-     */
-    updateTimerDisplay(taskId, seconds) {
-        const timerElement = document.getElementById(`task-time-${taskId}`);
-        if (!timerElement) return;
-
-        // Calcola ore, minuti e secondi
-        const hours = Math.floor(seconds / 3600);
-        const minutes = Math.floor((seconds % 3600) / 60);
-        const remainingSeconds = seconds % 60;
-
-        // Formatta il tempo
-        let timeString = '';
-        if (hours > 0) {
-            timeString += `${hours}h `;
-        }
-        if (minutes > 0 || hours > 0) {
-            timeString += `${minutes}m `;
-        }
-        timeString += `${remainingSeconds}s`;
-
-        // Aggiorna il testo del timer
-        timerElement.innerHTML = `<span>${timeString}</span>`;
-
-        // Applica la classe 'active' se il timer è in esecuzione
-        if (this.activeTimers.has(taskId)) {
-            timerElement.classList.add('active');
-        } else {
-            timerElement.classList.remove('active');
-        }
-    }
-
-    /**
-     * Apre la modale del timer per una task
-     * @param {string} taskId - ID della task
-     */
-    async openTimerModal(taskId) {
-        try {
-            // Carica i dati della task
-            const task = await databaseService.loadTask(taskId);
-            if (!task) {
-                console.error('Task non trovata:', taskId);
-                return;
-            }
-
-            this.currentTaskId = taskId;
-            this.modalOpen = true;
-
-            // Prepara la finestra modale
-            const modal = document.getElementById('timerModal');
-            const taskNameElement = document.getElementById('timerModalTaskName');
-            const timerDisplay = document.getElementById('timerModalDisplay');
-            const startStopButton = document.getElementById('timerStartStopButton');
-            const resetButton = document.getElementById('timerResetButton');
-            const closeButton = document.getElementById('timerCloseButton');
-            const endTaskButton = document.getElementById('timerEndTaskButton');
-            const endTaskTimeInput = document.getElementById('endTaskTimeInput');
-            const endTaskForm = document.getElementById('endTaskForm');
-
-            // Imposta il nome della task
-            taskNameElement.textContent = task.content;
-
-            // Imposta il tempo corrente
-            const seconds = task.time_active || 0;
-            this.updateModalTimerDisplay(seconds);
-
-            // Configura il pulsante Start/Stop
-            const isTimerRunning = this.activeTimers.has(taskId);
-            startStopButton.textContent = isTimerRunning ? 'Pausa' : 'Avvia';
-            startStopButton.className = isTimerRunning ? 'button-warning' : 'button-success';
-
-            // Configura il pulsante di chiusura
-            closeButton.onclick = () => this.closeTimerModal();
-
-            // Configura il pulsante Reset
-            resetButton.onclick = () => this.resetTimer(taskId);
-
-            // Configura il pulsante Start/Stop
-            startStopButton.onclick = () => {
-                if (this.activeTimers.has(taskId)) {
-                    this.stopTimer(taskId);
-                    startStopButton.textContent = 'Avvia';
-                    startStopButton.className = 'button-success';
-                } else {
-                    this.startTimer(taskId);
-                    startStopButton.textContent = 'Pausa';
-                    startStopButton.className = 'button-warning';
-                }
-            };
-
-            // Configura il form per terminare la task
-            endTaskForm.onsubmit = (e) => {
-                e.preventDefault();
-                this.endTask(taskId, endTaskTimeInput.value);
-            };
-
-            // Mostra la finestra modale
-            modal.style.display = 'flex';
-
-            // Avvia l'intervallo per aggiornare il timer nella modale
-            this.startModalTimerUpdate(taskId);
-        } catch (error) {
-            console.error('Errore durante l\'apertura della modale del timer:', error);
-            showStatus('Errore durante l\'apertura del timer', 'error');
-        }
-    }
-
-    /**
-     * Chiude la modale del timer
-     */
-    closeTimerModal() {
-        const modal = document.getElementById('timerModal');
-        modal.style.display = 'none';
-
-        this.modalOpen = false;
-        this.currentTaskId = null;
-
-        // Ferma l'aggiornamento del timer nella modale
-        if (this.timerInterval) {
-            clearInterval(this.timerInterval);
-            this.timerInterval = null;
-        }
-    }
-
-    /**
-     * Avvia il timer per una task
-     * @param {string} taskId - ID della task
-     */
-    async startTimer(taskId) {
-        try {
-            if (this.activeTimers.has(taskId)) {
-                console.log(`Timer già attivo per la task ${taskId}`);
-                return;
-            }
-
-            // Carica i dati attuali della task
-            const task = await databaseService.loadTask(taskId);
-            if (!task) {
-                console.error('Task non trovata:', taskId);
-                return;
-            }
-
-            // Imposta il tempo iniziale
-            const startTime = Date.now();
-            const initialSeconds = task.time_active || 0;
-
-            // Crea l'oggetto timer
-            const timer = {
-                startTime,
-                initialSeconds,
-                interval: setInterval(() => {
-                    this.updateTimer(taskId);
-                }, 1000)
-            };
-
-            // Salva il timer
-            this.activeTimers.set(taskId, timer);
-
-            // Aggiorna immediatamente il display
-            this.updateTimer(taskId);
-
-            // Aggiorna lo stato del pulsante nella lista task
-            const timerButton = document.getElementById(`task-time-${taskId}`);
-            if (timerButton) {
-                timerButton.classList.add('active');
-            }
-
-            console.log(`Timer avviato per la task ${taskId}`);
-        } catch (error) {
-            console.error(`Errore durante l'avvio del timer per la task ${taskId}:`, error);
-            showStatus('Errore durante l\'avvio del timer', 'error');
-        }
-    }
-
-    /**
-     * Ferma il timer per una task
-     * @param {string} taskId - ID della task
-     */
-    async stopTimer(taskId) {
-        try {
-            const timer = this.activeTimers.get(taskId);
-            if (!timer) {
-                console.log(`Nessun timer attivo per la task ${taskId}`);
-                return;
-            }
-
-            // Ferma l'intervallo
-            clearInterval(timer.interval);
-
-            // Calcola il tempo trascorso
-            const currentSeconds = this.calculateCurrentSeconds(timer);
-
-            // Aggiorna il tempo nella task
-            await databaseService.updateTask(taskId, { time_active: currentSeconds });
-
-            // Rimuovi il timer dalla mappa
-            this.activeTimers.delete(taskId);
-
-            // Aggiorna il display
-            this.updateTimerDisplay(taskId, currentSeconds);
-
-            // Aggiorna lo stato del pulsante nella lista task
-            const timerButton = document.getElementById(`task-time-${taskId}`);
-            if (timerButton) {
-                timerButton.classList.remove('active');
-            }
-
-            console.log(`Timer fermato per la task ${taskId}. Tempo totale: ${currentSeconds} secondi`);
-        } catch (error) {
-            console.error(`Errore durante l'arresto del timer per la task ${taskId}:`, error);
-            showStatus('Errore durante l\'arresto del timer', 'error');
-        }
-    }
-
-    /**
-     * Resetta il timer per una task
-     * @param {string} taskId - ID della task
-     */
-    async resetTimer(taskId) {
-        try {
-            // Ferma il timer se è attivo
-            if (this.activeTimers.has(taskId)) {
-                await this.stopTimer(taskId);
-            }
-
-            // Resetta il tempo nella task
-            await databaseService.updateTask(taskId, { time_active: 0 });
-
-            // Aggiorna il display
-            this.updateTimerDisplay(taskId, 0);
-            this.updateModalTimerDisplay(0);
-
-            console.log(`Timer resettato per la task ${taskId}`);
-            showStatus('Timer resettato', 'success');
-        } catch (error) {
-            console.error(`Errore durante il reset del timer per la task ${taskId}:`, error);
-            showStatus('Errore durante il reset del timer', 'error');
-        }
-    }
-
-    /**
-     * Termina una task con un tempo specifico
-     * @param {string} taskId - ID della task
-     * @param {string} timeString - Tempo in formato "HH:MM"
-     */
-    async endTask(taskId, timeString) {
-        try {
-            // Ferma il timer se è attivo
-            if (this.activeTimers.has(taskId)) {
-                await this.stopTimer(taskId);
-            }
-
-            // Converte il tempo in secondi
-            const [hours, minutes] = timeString.split(':').map(Number);
-            const seconds = (hours * 3600) + (minutes * 60);
-
-            // Aggiorna la task
-            await databaseService.updateTask(taskId, {
-                time_active: 0,
-                time_end_task: seconds,
-                completed: true,
-                completed_at: new Date().toISOString()
-            });
-
-            // Chiudi la modale
-            this.closeTimerModal();
-
-            // Aggiorna l'interfaccia
-            await loadTasks();
-
-            showStatus('Task completata con successo', 'success');
-        } catch (error) {
-            console.error(`Errore durante il completamento della task ${taskId}:`, error);
-            showStatus('Errore durante il completamento della task', 'error');
-        }
-    }
-
-    /**
-     * Aggiorna il timer per una task
-     * @param {string} taskId - ID della task
-     */
-    async updateTimer(taskId) {
-        const timer = this.activeTimers.get(taskId);
-        if (!timer) return;
-
-        // Calcola i secondi trascorsi
-        const currentSeconds = this.calculateCurrentSeconds(timer);
-
-        // Aggiorna il display
-        this.updateTimerDisplay(taskId, currentSeconds);
-
-        // Se la modale è aperta e questa è la task corrente, aggiorna anche il display della modale
-        if (this.modalOpen && this.currentTaskId === taskId) {
-            this.updateModalTimerDisplay(currentSeconds);
-        }
-
-        // Salva periodicamente lo stato del timer
+        // Aggiorna lo stato del timer
         const now = Date.now();
-        if (!timer.lastSave || (now - timer.lastSave) >= 30000) { // Salva ogni 30 secondi
-            try {
-                await databaseService.updateTask(taskId, { time_active: currentSeconds });
-                timer.lastSave = now;
-            } catch (error) {
-                console.error(`Errore durante il salvataggio del timer per la task ${taskId}:`, error);
-            }
-        }
+        const elapsed = now - timer.lastUpdateTime;
+
+        timer.elapsedTime += elapsed;
+        timer.lastUpdateTime = now;
+        timer.running = false;
+
+        console.log(`TimerService: Timer in pausa per task ${taskId}, tempo trascorso ${timer.elapsedTime}ms`);
+
+        // Notifica la pausa del timer
+        this.notifyTimerUpdated(taskId, timer);
+
+        // Forza un salvataggio immediato
+        this.saveTimers();
+
+        return timer;
     }
 
     /**
-     * Avvia l'aggiornamento del timer nella modale
-     * @param {string} taskId - ID della task
+     * Riprende un timer in pausa
+     * @param {string|number} taskId - ID del task
+     * @returns {Object|null} - Dati del timer aggiornato o null se non trovato
      */
-    startModalTimerUpdate(taskId) {
-        // Ferma l'intervallo esistente se presente
-        if (this.timerInterval) {
-            clearInterval(this.timerInterval);
+    resumeTimer(taskId) {
+        const timer = this.timers[taskId];
+
+        if (!timer) {
+            console.log(`TimerService: Timer non trovato per task ${taskId}`);
+            return null;
         }
 
-        // Avvia un nuovo intervallo
-        this.timerInterval = setInterval(() => {
-            if (this.modalOpen && this.currentTaskId === taskId) {
-                // Se il timer è attivo, aggiorna il display
-                if (this.activeTimers.has(taskId)) {
-                    const timer = this.activeTimers.get(taskId);
-                    const currentSeconds = this.calculateCurrentSeconds(timer);
-                    this.updateModalTimerDisplay(currentSeconds);
-                } else {
-                    // Altrimenti, carica il tempo dalla task
-                    databaseService.loadTask(taskId).then(task => {
-                        if (task && this.modalOpen && this.currentTaskId === taskId) {
-                            this.updateModalTimerDisplay(task.time_active || 0);
-                        }
-                    }).catch(error => {
-                        console.error(`Errore durante il caricamento della task ${taskId}:`, error);
-                    });
-                }
+        if (timer.running) {
+            console.log(`TimerService: Timer già in esecuzione per task ${taskId}`);
+            return timer;
+        }
+
+        if (timer.completed) {
+            console.log(`TimerService: Impossibile riprendere un timer completato per task ${taskId}`);
+            return timer;
+        }
+
+        // Aggiorna lo stato del timer
+        const now = Date.now();
+
+        timer.lastUpdateTime = now;
+        timer.running = true;
+
+        console.log(`TimerService: Timer ripreso per task ${taskId}`);
+
+        // Notifica la ripresa del timer
+        this.notifyTimerUpdated(taskId, timer);
+
+        // Forza un salvataggio immediato
+        this.saveTimers();
+
+        return timer;
+    }
+
+    /**
+     * Ferma un timer
+     * @param {string|number} taskId - ID del task
+     * @returns {Object|null} - Dati del timer aggiornato o null se non trovato
+     */
+    stopTimer(taskId) {
+        const timer = this.timers[taskId];
+
+        if (!timer) {
+            console.log(`TimerService: Timer non trovato per task ${taskId}`);
+            return null;
+        }
+
+        // Aggiorna lo stato del timer
+        if (timer.running) {
+            const now = Date.now();
+            const elapsed = now - timer.lastUpdateTime;
+            timer.elapsedTime += elapsed;
+        }
+
+        timer.running = false;
+        timer.completed = true;
+
+        console.log(`TimerService: Timer fermato per task ${taskId}, tempo finale ${timer.elapsedTime}ms`);
+
+        // Notifica lo stop del timer
+        this.notifyTimerUpdated(taskId, timer);
+
+        // Forza un salvataggio immediato
+        this.saveTimers();
+
+        return timer;
+    }
+
+    /**
+     * Resetta un timer
+     * @param {string|number} taskId - ID del task
+     * @param {boolean} restart - Se riavviare il timer dopo il reset
+     * @returns {Object|null} - Dati del timer aggiornato o null se non trovato
+     */
+    resetTimer(taskId, restart = false) {
+        const timer = this.timers[taskId];
+
+        if (!timer) {
+            console.log(`TimerService: Timer non trovato per task ${taskId}`);
+            return null;
+        }
+
+        // Salva la durata originale
+        const { duration } = timer;
+        const now = Date.now();
+
+        // Resetta lo stato del timer
+        timer.elapsedTime = 0;
+        timer.startTime = now;
+        timer.lastUpdateTime = now;
+        timer.running = restart;
+        timer.completed = false;
+
+        console.log(`TimerService: Timer resettato per task ${taskId}, riavvio: ${restart}`);
+
+        // Notifica il reset del timer
+        this.notifyTimerUpdated(taskId, timer);
+
+        // Forza un salvataggio immediato
+        this.saveTimers();
+
+        return timer;
+    }
+
+    /**
+     * Elimina un timer
+     * @param {string|number} taskId - ID del task
+     * @returns {boolean} - true se il timer è stato eliminato, false altrimenti
+     */
+    deleteTimer(taskId) {
+        if (!this.timers[taskId]) {
+            console.log(`TimerService: Timer non trovato per task ${taskId}`);
+            return false;
+        }
+
+        // Elimina il timer
+        delete this.timers[taskId];
+
+        console.log(`TimerService: Timer eliminato per task ${taskId}`);
+
+        // Notifica l'eliminazione del timer
+        this.notifyTimerDeleted(taskId);
+
+        // Forza un salvataggio immediato
+        this.saveTimers();
+
+        return true;
+    }
+
+    /**
+     * Ottiene i dati di un timer
+     * @param {string|number} taskId - ID del task
+     * @returns {Object|null} - Dati del timer o null se non trovato
+     */
+    getTimer(taskId) {
+        const timer = this.timers[taskId];
+
+        if (!timer) {
+            return null;
+        }
+
+        // Se il timer è in esecuzione, calcola il tempo rimanente
+        if (timer.running) {
+            const now = Date.now();
+            const elapsed = now - timer.lastUpdateTime;
+            const totalElapsed = timer.elapsedTime + elapsed;
+            const timeLeft = Math.max(0, timer.duration - totalElapsed);
+
+            return {
+                ...timer,
+                currentElapsed: totalElapsed,
+                timeLeft
+            };
+        }
+
+        // Se il timer è in pausa, restituisci i dati attuali
+        const timeLeft = Math.max(0, timer.duration - timer.elapsedTime);
+
+        return {
+            ...timer,
+            currentElapsed: timer.elapsedTime,
+            timeLeft
+        };
+    }
+
+    /**
+     * Ottiene tutti i timer attivi
+     * @returns {Object} - Mappa dei timer attivi
+     */
+    getAllTimers() {
+        const result = {};
+        const now = Date.now();
+
+        // Calcola i dati aggiornati per ogni timer
+        for (const taskId in this.timers) {
+            const timer = this.timers[taskId];
+
+            // Se il timer è in esecuzione, calcola il tempo trascorso
+            if (timer.running) {
+                const elapsed = now - timer.lastUpdateTime;
+                const totalElapsed = timer.elapsedTime + elapsed;
+                const timeLeft = Math.max(0, timer.duration - totalElapsed);
+
+                result[taskId] = {
+                    ...timer,
+                    currentElapsed: totalElapsed,
+                    timeLeft
+                };
             } else {
-                // Se la modale è chiusa o è cambiata la task, ferma l'intervallo
-                clearInterval(this.timerInterval);
-                this.timerInterval = null;
+                // Se il timer è in pausa, usa i dati attuali
+                const timeLeft = Math.max(0, timer.duration - timer.elapsedTime);
+
+                result[taskId] = {
+                    ...timer,
+                    currentElapsed: timer.elapsedTime,
+                    timeLeft
+                };
             }
-        }, 1000);
+        }
+
+        return result;
     }
 
     /**
-     * Aggiorna il display del timer nella modale
-     * @param {number} seconds - Secondi trascorsi
+     * Converte un tempo in millisecondi in un formato leggibile
+     * @param {number} timeMs - Tempo in millisecondi
+     * @returns {string} - Tempo formattato (HH:MM:SS)
      */
-    updateModalTimerDisplay(seconds) {
-        const timerDisplay = document.getElementById('timerModalDisplay');
-        if (!timerDisplay) return;
+    formatTime(timeMs) {
+        const totalSeconds = Math.floor(timeMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
 
-        // Calcola ore, minuti e secondi
-        const hours = Math.floor(seconds / 3600);
-        const minutes = Math.floor((seconds % 3600) / 60);
-        const remainingSeconds = seconds % 60;
-
-        // Formatta il tempo
-        const timeString = [
+        return [
             hours.toString().padStart(2, '0'),
             minutes.toString().padStart(2, '0'),
-            remainingSeconds.toString().padStart(2, '0')
+            seconds.toString().padStart(2, '0')
         ].join(':');
-
-        // Aggiorna il display
-        timerDisplay.textContent = timeString;
     }
 
     /**
-     * Calcola i secondi trascorsi per un timer
-     * @param {Object} timer - Oggetto timer
-     * @returns {number} - Secondi trascorsi
+     * Converte un tempo in formato leggibile in millisecondi
+     * @param {string} timeFormatted - Tempo formattato (HH:MM:SS)
+     * @returns {number} - Tempo in millisecondi
      */
-    calculateCurrentSeconds(timer) {
-        const elapsedMilliseconds = Date.now() - timer.startTime;
-        const elapsedSeconds = Math.floor(elapsedMilliseconds / 1000);
-        return timer.initialSeconds + elapsedSeconds;
+    parseFormattedTime(timeFormatted) {
+        const [hours, minutes, seconds] = timeFormatted.split(':').map(Number);
+        return (hours * 3600 + minutes * 60 + seconds) * 1000;
+    }
+
+    /**
+     * Registra un callback per il salvataggio dei timer
+     * @param {Function} callback - Funzione da chiamare quando i timer vengono salvati
+     */
+    onSave(callback) {
+        if (typeof callback === 'function') {
+            this.saveCallbacks.push(callback);
+        }
+    }
+
+    /**
+     * Registra un callback per l'aggiornamento di un timer
+     * @param {string|number} taskId - ID del task o 'all' per tutti i timer
+     * @param {Function} callback - Funzione da chiamare quando il timer viene aggiornato
+     */
+    onTimerUpdate(taskId, callback) {
+        if (typeof callback === 'function') {
+            if (!this.updateCallbacks[taskId]) {
+                this.updateCallbacks[taskId] = [];
+            }
+            this.updateCallbacks[taskId].push(callback);
+        }
+    }
+
+    /**
+     * Rimuove un callback per l'aggiornamento di un timer
+     * @param {string|number} taskId - ID del task
+     * @param {Function} callback - Callback da rimuovere
+     */
+    offTimerUpdate(taskId, callback) {
+        if (this.updateCallbacks[taskId]) {
+            this.updateCallbacks[taskId] = this.updateCallbacks[taskId]
+                .filter(cb => cb !== callback);
+        }
+    }
+
+    /**
+     * Notifica i listeners che un timer è stato aggiornato
+     * @param {string|number} taskId - ID del task
+     * @param {Object} timerData - Dati aggiornati del timer
+     */
+    notifyTimerUpdated(taskId, timerData) {
+        // Chiama i callback specifici per questo timer
+        if (this.updateCallbacks[taskId]) {
+            this.updateCallbacks[taskId].forEach(callback => {
+                try {
+                    callback(timerData);
+                } catch (error) {
+                    console.error(`TimerService: Errore nel callback di aggiornamento per ${taskId}`, error);
+                }
+            });
+        }
+
+        // Chiama i callback generici per tutti i timer
+        if (this.updateCallbacks['all']) {
+            this.updateCallbacks['all'].forEach(callback => {
+                try {
+                    callback({ taskId, ...timerData });
+                } catch (error) {
+                    console.error('TimerService: Errore nel callback di aggiornamento globale', error);
+                }
+            });
+        }
+    }
+
+    /**
+     * Notifica i listeners che un timer è stato completato
+     * @param {string|number} taskId - ID del task
+     * @param {Object} timerData - Dati del timer completato
+     */
+    notifyTimerCompleted(taskId, timerData) {
+        // Evento specifico di completamento
+        if (this.updateCallbacks[`${taskId}:completed`]) {
+            this.updateCallbacks[`${taskId}:completed`].forEach(callback => {
+                try {
+                    callback(timerData);
+                } catch (error) {
+                    console.error(`TimerService: Errore nel callback di completamento per ${taskId}`, error);
+                }
+            });
+        }
+
+        // Evento generico di completamento
+        if (this.updateCallbacks['completed']) {
+            this.updateCallbacks['completed'].forEach(callback => {
+                try {
+                    callback({ taskId, ...timerData });
+                } catch (error) {
+                    console.error('TimerService: Errore nel callback di completamento globale', error);
+                }
+            });
+        }
+    }
+
+    /**
+     * Notifica i listeners che un timer è stato eliminato
+     * @param {string|number} taskId - ID del task
+     */
+    notifyTimerDeleted(taskId) {
+        // Evento specifico di eliminazione
+        if (this.updateCallbacks[`${taskId}:deleted`]) {
+            this.updateCallbacks[`${taskId}:deleted`].forEach(callback => {
+                try {
+                    callback({ taskId });
+                } catch (error) {
+                    console.error(`TimerService: Errore nel callback di eliminazione per ${taskId}`, error);
+                }
+            });
+        }
+
+        // Evento generico di eliminazione
+        if (this.updateCallbacks['deleted']) {
+            this.updateCallbacks['deleted'].forEach(callback => {
+                try {
+                    callback({ taskId });
+                } catch (error) {
+                    console.error('TimerService: Errore nel callback di eliminazione globale', error);
+                }
+            });
+        }
     }
 }
 
-// Istanza singleton del servizio
+// Esporta un'istanza singleton del servizio
 const timerService = new TimerService();
-
-// Esporta il servizio per l'uso in altri moduli
 export default timerService; 

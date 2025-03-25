@@ -1257,20 +1257,28 @@
 
         async function handleDrop(e) {
             e.preventDefault();
-            if (!draggedTask || this === draggedTask) return;
+            console.log('DEBUG: handleDrop chiamato', e.currentTarget.id);
+            
+            if (!draggedTask || this === draggedTask) {
+                console.log('DEBUG: Drop ignorato - draggedTask nullo o drop su se stesso');
+                return;
+            }
 
             // Ottieni i dati della task trascinata
             let dragData;
+            let success = false; // Flag per tracciare il successo dell'operazione
+            
             try {
                 dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
+                console.log('DEBUG: Dati drag&drop', dragData);
             } catch (error) {
-                console.error('Errore nel parsing dei dati trascinati:', error);
+                console.error('DEBUG: Errore nel parsing dei dati trascinati', error);
                 const draggedTaskItem = draggedTask.classList.contains('task-container') || draggedTask.classList.contains('temp-drag-container')
                     ? draggedTask.querySelector('.task-item')
                     : draggedTask;
 
                 if (!draggedTaskItem) {
-                    console.error('Elemento task non trovato');
+                    console.error('DEBUG: Elemento task non trovato');
                     return;
                 }
 
@@ -1278,9 +1286,10 @@
                     taskId: draggedTaskItem.dataset.taskId,
                     hasSubtasks: draggedTask.classList.contains('temp-drag-container')
                 };
+                console.log('DEBUG: Dati drag&drop ricostruiti', dragData);
 
                 if (!dragData.taskId) {
-                    console.error('Impossibile ottenere ID della task trascinata');
+                    console.error('DEBUG: Impossibile ottenere ID della task trascinata');
                     return;
                 }
             }
@@ -1291,36 +1300,10 @@
 
             // Controllo se una subtask è stata rilasciata nella zona principale delle task
             if (dragData.isSubtask && (this.id === 'taskList' || this === document.getElementById('taskList'))) {
-                // Una subtask è stata rilasciata nell'area principale: trasformala in task principale
-                try {
-                    console.log('Conversione di subtask in task principale:', taskId);
-
-                    // Aggiorna il database impostando parent_id a null
-                    const { error } = await supabase
-                        .from('tasks')
-                        .update({ parent_id: null })
-                        .eq('id', taskId);
-
-                    if (error) {
-                        console.error('Errore nell\'aggiornamento del database:', error);
-                        throw error;
-                    }
-
-                    // Ricarica le task per aggiornare l'interfaccia
-                    await loadTasks();
-
-                    // Mostra un messaggio di successo
-                    showStatus('Subtask convertita in task principale', 'success');
-
-                    // Rimuovi l'evidenziazione dall'area di drop
-                    document.getElementById('taskList').classList.remove('task-area-highlight');
-
-                    return;
-                } catch (error) {
-                    console.error('Errore durante la conversione della subtask:', error);
-                    showStatus('Errore: ' + (error.message || 'Problema durante la conversione'), 'error');
-                    return;
-                }
+                // Blocchiamo la conversione da subtask a task principale
+                console.log('DEBUG: Conversione di subtask in task principale bloccata: funzionalità rimossa');
+                showStatus('Non è possibile convertire una subtask in task principale', 'error');
+                return;
             }
 
             // Se la task di destinazione ha la classe potential-parent e non è una subtask
@@ -1329,6 +1312,7 @@
                 const draggedTaskElement = document.getElementById(`taskContainer-${taskId}`);
                 if (draggedTaskElement && draggedTaskElement.classList.contains('has-subtasks')) {
                     // La task ha subtask, non permettere lo spostamento
+                    console.log('DEBUG: Impossibile spostare task con subtask come subtask');
                     showStatus('Non è possibile spostare una task con subtask dentro un\'altra task', 'error');
                     return;
                 }
@@ -1337,20 +1321,21 @@
                 const draggedTaskId = taskId;
 
                 if (!parentId || !draggedTaskId) {
-                    console.error('ID mancante:', { parentId, draggedTaskId });
+                    console.error('DEBUG: ID mancante:', { parentId, draggedTaskId });
                     showStatus('Errore: ID mancante', 'error');
                     return;
                 }
 
                 // Verifica che non si stia tentando di rendere una task subtask di se stessa
                 if (parentId === draggedTaskId) {
+                    console.log('DEBUG: Una task non può essere subtask di se stessa');
                     showStatus('Non è possibile rendere una task subtask di se stessa', 'error');
                     return;
                 }
 
                 // Prima ottieni lo stato attuale della task dal database
                 try {
-                    console.log('Aggiornamento parent_id:', { draggedTaskId, newParentId: parentId });
+                    console.log('DEBUG: Aggiornamento parent_id:', { draggedTaskId, newParentId: parentId });
 
                     // Verifica che la task esista
                     const { data: taskExists, error: checkError } = await supabase
@@ -1360,12 +1345,12 @@
                         .single();
 
                     if (checkError) {
-                        console.error('Errore nel controllo della task:', checkError);
+                        console.error('DEBUG: Errore nel controllo della task:', checkError);
                         throw checkError;
                     }
 
                     if (!taskExists) {
-                        console.error('Task non trovata nel database:', draggedTaskId);
+                        console.error('DEBUG: Task non trovata nel database:', draggedTaskId);
                         showStatus('Task non trovata', 'error');
                         return;
                     }
@@ -1407,7 +1392,7 @@
                         .eq('id', draggedTaskId);
 
                     if (error) {
-                        console.error('Errore nell\'aggiornamento del database:', error);
+                        console.error('DEBUG: Errore nell\'aggiornamento del database:', error);
                         throw error;
                     }
 
@@ -1424,7 +1409,7 @@
                         }
                     }
 
-                    console.log('Database aggiornato con successo');
+                    console.log('DEBUG: Database aggiornato con successo');
 
                     // Determinare se la task ha subtask in modo sicuro
                     let hasVisibleSubtasks = hasSubtasks || false;
@@ -1435,7 +1420,7 @@
                             hasVisibleSubtasks = true;
                         }
                     } catch (domError) {
-                        console.log('Errore non critico nel controllo delle subtask:', domError);
+                        console.log('DEBUG: Errore non critico nel controllo delle subtask:', domError);
                     }
 
                     // Rimuovi prima l'elemento dall'UI
@@ -1450,19 +1435,22 @@
                             // Se è una subtask semplice
                             draggedTask.remove();
                         }
-                        console.log('Elemento rimosso dalla UI');
+                        console.log('DEBUG: Elemento rimosso dalla UI');
                     } catch (removeError) {
-                        console.log('Errore non critico nella rimozione UI:', removeError);
+                        console.log('DEBUG: Errore non critico nella rimozione UI:', removeError);
                     }
 
                     // Imposta draggedTask a null per evitare problemi quando si ricarica la vista
                     draggedTask = null;
 
-                    console.log('Ricarico le task...');
+                    console.log('DEBUG: Ricarico le task...');
                     // Ricarica le task per garantire una visualizzazione coerente
                     await loadTasks();
-                    console.log('Task ricaricate');
+                    console.log('DEBUG: Task ricaricate');
 
+                    // Segna l'operazione come riuscita
+                    success = true;
+                    
                     // Mostra un messaggio di successo
                     if (hasVisibleSubtasks) {
                         showStatus('Task e relative subtask spostate', 'success');
@@ -1470,24 +1458,32 @@
                         showStatus('Task spostata come subtask', 'success');
                     }
                 } catch (error) {
-                    console.error('Dettagli errore:', error);
+                    console.error('DEBUG: Dettagli errore:', error);
                     showStatus('Errore: ' + (error.message || 'Problema durante lo spostamento'), 'error');
 
                     // Ricarica comunque le task per ripristinare lo stato coerente
                     try {
                         await loadTasks();
                     } catch (loadError) {
-                        console.error('Errore anche nel ricaricare le task:', loadError);
+                        console.error('DEBUG: Errore anche nel ricaricare le task:', loadError);
                     }
                 }
             } else {
                 // Comportamento normale di riordinamento già gestito nel dragOver
-                // Salva l'ordine delle task
+                console.log('DEBUG: Riordinamento standard delle task');
                 saveTaskOrder();
+                success = true; // Anche il riordinamento è considerato un successo
             }
 
             // Rimuovi la classe potential-parent
-            this.classList.remove('potential-parent');
+            document.querySelectorAll('.potential-parent').forEach(el => {
+                el.classList.remove('potential-parent');
+            });
+            
+            // Se l'operazione è riuscita e non c'è già un messaggio di stato, mostra un messaggio di conferma
+            if (success && !document.querySelector('.status-message')) {
+                showStatus('Spostamento completato', 'success');
+            }
 
             // Imposta draggedTask a null per evitare problemi
             draggedTask = null;
@@ -2544,6 +2540,13 @@
 
         // Aggiungi la gestione della scorciatoia da tastiera
         document.addEventListener('keydown', (e) => {
+            // Previeni il refresh della pagina con cmd+r
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'r') {
+                e.preventDefault();
+                console.log('Refresh della pagina bloccato');
+                return;
+            }
+            
             // Controlla se è premuto Command (Mac) o Control (Windows)
             if ((e.metaKey || e.ctrlKey) && !isNaN(e.key) && e.key !== '0') {
                 e.preventDefault();
@@ -2711,11 +2714,15 @@
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
 
-                // Evidenzia l'area quando si trascina una subtask sopra di essa
+                // Rimuoviamo la funzionalità di highlight quando si trascina una subtask
+                // La classe task-area-highlight non viene più aggiunta
+
+                /* Il codice commentato sotto non è più necessario
                 const draggedItem = document.querySelector('.dragging');
                 if (draggedItem && draggedItem.classList.contains('subtask')) {
                     this.classList.add('task-area-highlight');
                 }
+                */
             });
 
             taskList.addEventListener('dragleave', function (e) {
@@ -4375,6 +4382,39 @@
         // document.getElementById('addTaskButton').addEventListener('click', addTask);
 
         // Variabili globali
+        // ... existing code ...
+
+        // Drop event per dragdrop nella lista principale
+        // RIMUOVO QUESTO EVENT LISTENER CHE CAUSA DUPLICAZIONE
+        // Lo sostituisco con un commento per indicare che è stato rimosso intenzionalmente
+        /* LISTENER RIMOSSO PER EVITARE DUPLICAZIONE: Questo event listener è già presente alla linea 2736
+        document.getElementById('taskList').addEventListener('drop', async function (event) {
+            event.preventDefault();
+            
+            try {
+                const dragData = JSON.parse(event.dataTransfer.getData('application/json'));
+                const taskId = dragData.taskId;
+                const isSubtask = dragData.isSubtask;
+                const hasSubtasks = dragData.hasSubtasks;
+                
+                // RIMOZIONE DELLA CONVERSIONE DA SUBTASK A TASK NORMALE
+                // Blocchiamo il drop di subtask nel taskList principale
+                if (isSubtask && (this.id === 'taskList' || this === document.getElementById('taskList'))) {
+                    // Non permettiamo più la conversione da subtask a task normale
+                    console.log('Tentativo di conversione subtask in task bloccato: funzionalità rimossa');
+                    showStatus('Non è possibile convertire una subtask in task principale', 'error');
+                    return;
+                }
+
+                // Resto della logica di drop
+                // ... existing code ...
+            } catch (error) {
+                console.error('Errore durante il drop:', error);
+                showStatus('Si è verificato un errore durante lo spostamento', 'error');
+            }
+        });
+        */
+
         // ... existing code ...
     </script>
 </body>

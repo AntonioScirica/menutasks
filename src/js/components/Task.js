@@ -1,496 +1,1095 @@
 /**
- * Componente per la gestione delle task
+ * Componente per la gestione dei task
+ * Si occupa del rendering e dell'aggiornamento dei task nell'interfaccia
  */
+class TaskComponent {
+    constructor(appState, databaseService, timerService) {
+        this.appState = appState;
+        this.db = databaseService;
+        this.timerService = timerService;
 
-// Variabili per il drag and drop
-let draggedTask = null;
-let dragTargetTimeout = null;
-let potentialParent = null;
+        // Cache degli elementi DOM
+        this.elements = {
+            taskList: document.getElementById('taskList'),
+            completedTasksList: document.getElementById('completedTasksList')
+        };
 
-/**
- * Carica le task di un progetto
- * @returns {Promise<void>}
- */
-async function loadTasks() {
-    if (!currentProjectId) {
-        document.getElementById('taskList').innerHTML = '';
-        document.getElementById('completedTasksList').innerHTML = '';
-        updateInfoStats([]); // Aggiorna le statistiche con array vuoto
-        return;
+        // Mappa dei task renderizzati
+        this.renderedTasks = new Map();
+
+        // Riferimenti agli ascoltatori
+        this.listeners = {
+            unsubscribeActive: null,
+            unsubscribeCompleted: null
+        };
+
+        // Stato locale
+        this.dragState = {
+            dragging: false,
+            draggedElement: null,
+            originalIndex: -1,
+            currentHover: null
+        };
+
+        // Timer per controllo aggiornamento task giornalieri
+        this.dailyTasksTimer = null;
+        this.lastDayChecked = null;
     }
 
-    try {
-        // Prima di caricare le task, verifica se ci sono task giornaliere da resettare
-        const hasResetTasks = await checkDailyTasksForReset();
-        if (hasResetTasks) {
-            console.log('Task giornaliere resettate, proseguo con il caricamento delle task');
+    /**
+     * Inizializza il componente
+     */
+    initialize() {
+        console.log('TaskComponent: Inizializzazione...');
+
+        // Registra gli ascoltatori per lo stato
+        this.registerStateListeners();
+
+        // Registra ascoltatori per eventi DOM
+        this.setupEventListeners();
+
+        // Avvia il timer per i task giornalieri
+        this.startDailyTasksChecker();
+
+        console.log('TaskComponent: Inizializzazione completata');
+    }
+
+    /**
+     * Avvia il controllo periodico dei task giornalieri
+     */
+    startDailyTasksChecker() {
+        // Controlla subito al primo avvio
+        this.checkAndResetDailyTasks();
+
+        // Controlla ogni minuto
+        this.dailyTasksTimer = setInterval(() => {
+            this.checkAndResetDailyTasks();
+        }, 60000); // Controllo ogni minuto
+    }
+
+    /**
+     * Controlla se è necessario ripristinare i task giornalieri
+     */
+    checkAndResetDailyTasks() {
+        const now = new Date();
+        const currentDay = now.toDateString();
+
+        // Se è un nuovo giorno o è la prima volta che controlliamo
+        if (this.lastDayChecked !== currentDay) {
+            console.log('TaskComponent: Nuovo giorno rilevato, aggiornamento task giornalieri');
+
+            // Aggiorna la data dell'ultimo controllo
+            this.lastDayChecked = currentDay;
+
+            // Se siamo vicini alla mezzanotte (23:55-00:05) o è la prima esecuzione
+            if (this.isNearMidnight(now) || !this.lastDayChecked) {
+                this.resetDailyTasks();
+            }
         }
+    }
 
-        // Carica tutte le task del progetto corrente
-        const tasks = await databaseService.loadTasks(currentProjectId);
+    /**
+     * Controlla se l'ora corrente è vicina alla mezzanotte
+     * @param {Date} date - Data corrente
+     * @returns {boolean} - True se siamo vicini alla mezzanotte
+     */
+    isNearMidnight(date) {
+        const hours = date.getHours();
+        const minutes = date.getMinutes();
 
-        const taskList = document.getElementById('taskList');
-        const completedTasksList = document.getElementById('completedTasksList');
+        // Consideriamo "vicino alla mezzanotte" tra le 23:55 e le 00:05
+        return (hours === 23 && minutes >= 55) || (hours === 0 && minutes <= 5);
+    }
 
-        taskList.innerHTML = '';
-        completedTasksList.innerHTML = '';
+    /**
+     * Ripristina i task giornalieri
+     */
+    async resetDailyTasks() {
+        try {
+            // Ottieni il progetto attivo
+            const activeProject = this.appState.getState('activeProject');
+            if (!activeProject) return;
 
-        // Se non ci sono task, resetta le statistiche
-        if (!tasks || tasks.length === 0) {
-            updateInfoStats([]); // Resetta tutti i contatori a zero
+            // Carica i task dal database
+            const tasks = await this.db.getTasksByProject(activeProject.id);
+            const dailyTasks = tasks.filter(task => task.is_daily);
+
+            // Per ogni task giornaliero completato, reimpostalo come non completato
+            for (const task of dailyTasks) {
+                if (task.completed) {
+                    // Aggiorna nel database
+                    const updatedTask = await this.db.updateTask(task.id, {
+                        completed: false,
+                        completed_at: null
+                    });
+
+                    // Aggiorna nello stato
+                    this.appState.updateTask(updatedTask);
+                }
+            }
+
+            // Ricarica e renderizza tutti i task
+            this.loadAndRenderTasks(activeProject.id);
+
+            console.log('TaskComponent: Task giornalieri ripristinati');
+        } catch (error) {
+            console.error('TaskComponent: Errore durante il ripristino dei task giornalieri', error);
+        }
+    }
+
+    /**
+     * Registra gli ascoltatori per lo stato
+     */
+    registerStateListeners() {
+        // Ascoltatore per i task attivi
+        this.listeners.unsubscribeActive = this.appState.subscribe('activeProject', (project) => {
+            if (project) {
+                // Quando cambia il progetto attivo, carica e renderizza i task
+                this.loadAndRenderTasks(project.id);
+            } else {
+                // Nessun progetto attivo, svuota la lista
+                this.clearTaskList();
+            }
+        });
+
+        // Ascoltatore per i filtri
+        this.appState.subscribe('filters', (filters) => {
+            // Quando cambiano i filtri, aggiorna la visualizzazione
+            this.applyFilters(filters);
+        });
+    }
+
+    /**
+     * Configura gli ascoltatori per gli eventi DOM
+     */
+    setupEventListeners() {
+        // Assicurati che gli elementi esistano
+        if (!this.elements.taskList || !this.elements.completedTasksList) {
+            console.error('TaskComponent: Elementi DOM necessari non trovati');
             return;
         }
 
-        // Aggiorna le statistiche con tutte le task
-        updateInfoStats(tasks);
+        // Eventi di drag and drop
+        this.elements.taskList.addEventListener('dragstart', this.handleDragStart.bind(this));
+        this.elements.taskList.addEventListener('dragover', this.handleDragOver.bind(this));
+        this.elements.taskList.addEventListener('dragleave', this.handleDragLeave.bind(this));
+        this.elements.taskList.addEventListener('drop', this.handleDrop.bind(this));
+        this.elements.taskList.addEventListener('dragend', this.handleDragEnd.bind(this));
 
-        // Separa le task principali dalle subtask
-        const mainTasks = tasks.filter(task => !task.parent_id);
-        const subtasks = tasks.filter(task => task.parent_id);
-
-        // Crea una mappa delle subtask per parent_id
-        const subtasksMap = new Map();
-        subtasks.forEach(subtask => {
-            if (!subtasksMap.has(subtask.parent_id)) {
-                subtasksMap.set(subtask.parent_id, []);
-            }
-            subtasksMap.get(subtask.parent_id).push(subtask);
-        });
-
-        // Separa le task completate dalle non completate
-        const activeTasks = mainTasks.filter(task => !task.completed);
-        const completedTasks = mainTasks.filter(task => task.completed);
-
-        // Ordina le task attive usando l'ordinamento salvato o la posizione
-        const orderedActiveTasks = getOrderedTasks(activeTasks, currentProjectId);
-
-        // Ordina le subtask
-        subtasksMap.forEach((taskSubtasks, parentId) => {
-            subtasksMap.set(parentId, getOrderedSubtasks(taskSubtasks, parentId));
-        });
-
-        // Crea gli elementi per le task attive
-        orderedActiveTasks.forEach(task => {
-            createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority, task.completed);
-        });
-
-        // Raggruppa le task completate per data
-        if (completedTasks.length > 0) {
-            // Ordina per data di completamento (più recenti prima)
-            completedTasks.sort((a, b) => {
-                const dateA = a.completed_at ? new Date(a.completed_at) :
-                    (a.created_at ? new Date(a.created_at) : new Date(0));
-                const dateB = b.completed_at ? new Date(b.completed_at) :
-                    (b.created_at ? new Date(b.created_at) : new Date(0));
-                return dateB - dateA;
-            });
-
-            // Crea una mappa per raggruppare per data
-            const tasksByDate = new Map();
-
-            completedTasks.forEach(task => {
-                const dateKey = task.completed_at ?
-                    formatDate(task.completed_at) : 'Data sconosciuta';
-
-                if (!tasksByDate.has(dateKey)) {
-                    tasksByDate.set(dateKey, []);
-                }
-
-                tasksByDate.get(dateKey).push(task);
-            });
-
-            // Crea sezioni per ogni data
-            tasksByDate.forEach((tasks, dateKey) => {
-                // Crea intestazione solo se ci sono task
-                if (tasks && tasks.length > 0) {
-                    const dateHeader = document.createElement('div');
-                    dateHeader.className = 'completed-date-header';
-                    dateHeader.textContent = dateKey;
-                    completedTasksList.appendChild(dateHeader);
-
-                    // Crea le task per questa data
-                    tasks.forEach(task => {
-                        createTaskElement(task.id, task.content, null, subtasksMap.get(task.id), task.priority, task.completed, task.completed_at);
-                    });
-                }
-            });
-        }
-
-        // Aggiorna il contatore delle task completate
-        updateCompletedCounter();
-
-        // Inizializza i timer per le task attive
-        timerService.initializeTaskTimers(activeTasks);
-    } catch (error) {
-        console.error('Errore durante il caricamento delle task:', error);
-        showStatus('Errore durante il caricamento delle task', 'error');
-    }
-}
-
-/**
- * Ottiene le task ordinate in base all'ordine salvato o alla posizione
- * @param {Array} tasks - Task da ordinare
- * @param {string} projectId - ID del progetto
- * @returns {Array} - Task ordinate
- */
-function getOrderedTasks(tasks, projectId) {
-    let orderedTasks = [...tasks];
-
-    // Ottieni l'ordine salvato dal localStorage
-    const savedOrder = localStorage.getItem(`taskOrder_${projectId}`);
-
-    if (savedOrder) {
-        const orderArray = JSON.parse(savedOrder);
-
-        // Verifica che gli ID esistano ancora nei dati
-        const validOrderArray = orderArray.filter(id =>
-            tasks.some(task => task.id.toString() === id.toString())
-        );
-
-        if (validOrderArray.length > 0) {
-            // Mappa gli ID nell'ordine salvato alle task reali
-            const orderedTasksMap = new Map();
-            tasks.forEach(task => {
-                orderedTasksMap.set(task.id.toString(), task);
-            });
-
-            // Ordina in base all'ordine salvato
-            orderedTasks = validOrderArray
-                .map(id => orderedTasksMap.get(id.toString()))
-                .filter(Boolean);
-
-            // Aggiungi le task che non erano nell'ordine salvato
-            const remainingTasks = tasks.filter(task =>
-                !validOrderArray.includes(task.id.toString())
-            );
-
-            orderedTasks = [...orderedTasks, ...remainingTasks];
-        } else {
-            // Se l'ordine salvato non contiene ID validi, usa position
-            orderedTasks.sort((a, b) => a.position - b.position);
-        }
-    } else {
-        // Se non c'è un ordine salvato, usa position
-        orderedTasks.sort((a, b) => a.position - b.position);
+        // Eventi per task completati
+        this.elements.completedTasksList.addEventListener('click', this.handleCompletedTaskClick.bind(this));
     }
 
-    return orderedTasks;
-}
-
-/**
- * Ottiene le subtask ordinate in base all'ordine salvato o alla posizione
- * @param {Array} subtasks - Subtask da ordinare
- * @param {string} parentId - ID della task genitore
- * @returns {Array} - Subtask ordinate
- */
-function getOrderedSubtasks(subtasks, parentId) {
-    // Controlla se esiste un ordine salvato
-    const savedOrder = localStorage.getItem(`subtaskOrder_${parentId}`);
-
-    if (savedOrder) {
+    /**
+     * Carica e renderizza i task di un progetto
+     * @param {number|string} projectId - ID del progetto
+     */
+    async loadAndRenderTasks(projectId) {
         try {
-            const orderArray = JSON.parse(savedOrder);
+            console.log(`TaskComponent: Caricamento task per progetto ${projectId}`);
 
-            // Verifica che gli ID esistano ancora nelle subtask
-            const validOrderArray = orderArray.filter(id =>
-                subtasks.some(task => task.id.toString() === id.toString())
-            );
+            // Carica i task dal database
+            const tasks = await this.db.getTasksByProject(projectId);
 
-            if (validOrderArray.length > 0) {
-                // Mappa gli ID nell'ordine salvato alle subtask reali
-                const orderedSubtasksMap = new Map();
-                subtasks.forEach(task => {
-                    orderedSubtasksMap.set(task.id.toString(), task);
+            // Aggiorna lo stato dell'app
+            this.appState.updateProjectTasks(tasks);
+
+            // Svuota e renderizza la lista
+            this.renderTasks(tasks);
+
+            console.log(`TaskComponent: Caricati e renderizzati ${tasks.length} task`);
+        } catch (error) {
+            console.error('TaskComponent: Errore nel caricamento dei task', error);
+        }
+    }
+
+    /**
+     * Renderizza tutti i task
+     * @param {Array} tasks - Array di task da renderizzare
+     */
+    renderTasks(tasks) {
+        // Pulisci liste esistenti
+        this.clearTaskList();
+
+        // Dividi task completati e non completati
+        const activeTasks = tasks.filter(task => !task.completed);
+        const completedTasks = tasks.filter(task => task.completed);
+
+        // Ordina i task attivi per posizione
+        const sortedActiveTasks = this.sortTasks(activeTasks);
+
+        // Ordina i task completati per data di completamento
+        const sortedCompletedTasks = this.sortCompletedTasks(completedTasks);
+
+        // Renderizza i task attivi
+        sortedActiveTasks.forEach(task => {
+            this.renderTask(task);
+        });
+
+        // Renderizza i task completati
+        sortedCompletedTasks.forEach(task => {
+            this.renderTask(task, true);
+        });
+
+        // Aggiorna i timer attivi
+        this.updateTimers();
+    }
+
+    /**
+     * Renderizza un singolo task
+     * @param {Object} task - Task da renderizzare
+     * @param {boolean} [isCompleted=false] - Se il task è completato
+     * @returns {HTMLElement} - Elemento DOM creato
+     */
+    renderTask(task, isCompleted = false) {
+        const container = isCompleted ? this.elements.completedTasksList : this.elements.taskList;
+
+        if (!container) {
+            console.error(`TaskComponent: Contenitore ${isCompleted ? 'completedTasksList' : 'taskList'} non trovato`);
+            return null;
+        }
+
+        // Crea elemento task
+        const taskElement = document.createElement('div');
+        taskElement.className = 'task-item';
+        taskElement.dataset.id = task.id;
+        taskElement.dataset.position = task.position || 0;
+        taskElement.draggable = !isCompleted;
+
+        // Aggiungi classe completato se necessario
+        if (task.completed) {
+            taskElement.classList.add('completed');
+        }
+
+        // Aggiungi priorità come classe
+        if (task.priority) {
+            taskElement.classList.add(`priority-${task.priority}`);
+        }
+
+        // Aggiungi classe per task giornalieri
+        if (task.is_daily) {
+            taskElement.classList.add('daily');
+        }
+
+        // Struttura HTML
+        taskElement.innerHTML = `
+            <div class="task-checkbox-container">
+                <div class="task-checkbox ${task.completed ? 'checked' : ''}">
+                    <svg class="checkmark" viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"></path>
+                    </svg>
+                </div>
+            </div>
+            <div class="task-content" contenteditable="false">${task.content}</div>
+            <div class="task-actions">
+                ${this.renderTaskTimerSection(task)}
+                <div class="task-priority">
+                    <button class="priority-button ${task.priority === 'urgent' ? 'active' : ''}" data-priority="urgent" title="Urgente">
+                        <i data-lucide="flame" class="icon-flame"></i>
+                    </button>
+                    <button class="priority-button ${task.priority === 'medium' ? 'active' : ''}" data-priority="medium" title="Media">
+                        <i data-lucide="alert-circle" class="icon-alert-circle"></i>
+                    </button>
+                    <button class="priority-button ${task.priority === 'normal' ? 'active' : ''}" data-priority="normal" title="Normale">
+                        <i data-lucide="circle" class="icon-circle"></i>
+                    </button>
+                </div>
+                <button class="task-menu-button">
+                    <i data-lucide="more-vertical" class="icon-more-vertical"></i>
+                    <div class="task-menu">
+                        <div class="task-menu-option edit" data-action="edit">
+                            <i data-lucide="edit" class="icon-edit"></i>
+                            <span>Modifica</span>
+                        </div>
+                        <div class="task-menu-option delete" data-action="delete">
+                            <i data-lucide="trash" class="icon-trash"></i>
+                            <span>Elimina</span>
+                        </div>
+                    </div>
+                </button>
+            </div>
+        `;
+
+        // Aggiungi gli event listener
+        this.attachTaskEventListeners(taskElement, task);
+
+        // Aggiungi al container
+        container.appendChild(taskElement);
+
+        // Inizializza le icone
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons({ scope: taskElement });
+        }
+
+        // Salva il riferimento nella mappa
+        this.renderedTasks.set(task.id, taskElement);
+
+        return taskElement;
+    }
+
+    /**
+     * Renderizza la sezione timer del task
+     * @param {Object} task - Task da renderizzare
+     * @returns {string} - HTML per la sezione timer
+     */
+    renderTaskTimerSection(task) {
+        // Se il task non ha un timer, mostra solo l'icona timer
+        if (!task.time_end_task && !task.timer_enabled) {
+            return `
+                <div class="task-timer" title="Aggiungi timer">
+                    <i data-lucide="timer" class="icon-timer"></i>
+                </div>
+            `;
+        }
+
+        // Controlla se c'è un timer attivo per questo task
+        const timer = this.timerService.getTimer(task.id);
+        const hasActiveTimer = timer && !timer.completed;
+
+        // Se c'è solo un tempo stimato (non un timer attivo)
+        if (task.time_end_task && !hasActiveTimer) {
+            const formattedTime = this.formatTaskTime(task.time_end_task);
+
+            return `
+                <div class="task-timer with-time" title="Tempo stimato: ${formattedTime}">
+                    <i data-lucide="timer" class="icon-timer"></i>
+                    <span class="timer-time">${formattedTime}</span>
+                </div>
+            `;
+        }
+
+        // Se c'è un timer attivo
+        if (hasActiveTimer) {
+            const formattedTime = this.timerService.formatTime(timer.timeLeft);
+            const timerStatus = timer.running ? 'running' : 'paused';
+
+            return `
+                <div class="task-timer active ${timerStatus}" data-timer-id="${task.id}" title="Timer attivo">
+                    <i data-lucide="${timer.running ? 'pause' : 'play'}" class="icon-timer-control"></i>
+                    <span class="timer-time">${formattedTime}</span>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Formatta il tempo di un task in un formato leggibile
+     * @param {number} timeMs - Tempo in millisecondi
+     * @returns {string} - Tempo formattato (es. "2h 30m")
+     */
+    formatTaskTime(timeMs) {
+        const days = Math.floor(timeMs / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((timeMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((timeMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        let result = '';
+
+        if (days > 0) {
+            result += `${days}d `;
+        }
+
+        if (hours > 0 || days > 0) {
+            result += `${hours}h `;
+        }
+
+        if (minutes > 0 || (days === 0 && hours === 0)) {
+            result += `${minutes}m`;
+        }
+
+        return result.trim();
+    }
+
+    /**
+     * Aggiunge gli ascoltatori di eventi a un elemento task
+     * @param {HTMLElement} taskElement - Elemento DOM del task
+     * @param {Object} task - Dati del task
+     */
+    attachTaskEventListeners(taskElement, task) {
+        // Checkbox per completamento
+        const checkbox = taskElement.querySelector('.task-checkbox');
+        if (checkbox) {
+            checkbox.addEventListener('click', () => this.toggleTaskCompletion(task));
+        }
+
+        // Contenuto del task (doppio click per modificare)
+        const content = taskElement.querySelector('.task-content');
+        if (content) {
+            content.addEventListener('dblclick', () => this.editTaskContent(taskElement, task));
+            content.addEventListener('blur', (event) => this.saveTaskContent(event, task));
+            content.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    event.target.blur();
+                }
+            });
+        }
+
+        // Pulsanti priorità
+        const priorityButtons = taskElement.querySelectorAll('.priority-button');
+        priorityButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const priority = button.dataset.priority;
+                this.updateTaskPriority(task, priority);
+            });
+        });
+
+        // Menu task
+        const menuButton = taskElement.querySelector('.task-menu-button');
+        if (menuButton) {
+            menuButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                menuButton.classList.toggle('active');
+            });
+
+            // Opzioni del menu
+            const menuOptions = taskElement.querySelectorAll('.task-menu-option');
+            menuOptions.forEach(option => {
+                option.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    menuButton.classList.remove('active');
+
+                    const action = option.dataset.action;
+                    if (action === 'edit') {
+                        this.editTaskContent(taskElement, task);
+                    } else if (action === 'delete') {
+                        this.deleteTask(task);
+                    }
                 });
+            });
+        }
 
-                // Ordina in base all'ordine salvato
-                const orderedSubtasks = validOrderArray
-                    .map(id => orderedSubtasksMap.get(id.toString()))
-                    .filter(Boolean);
+        // Timer
+        const timerElement = taskElement.querySelector('.task-timer');
+        if (timerElement) {
+            timerElement.addEventListener('click', () => this.handleTimerClick(task));
+        }
 
-                // Aggiungi le subtask che non erano nell'ordine salvato
-                const remainingSubtasks = subtasks.filter(task =>
-                    !validOrderArray.includes(task.id.toString())
-                );
+        // Chiudi menu cliccando fuori
+        document.addEventListener('click', () => {
+            const activeMenus = document.querySelectorAll('.task-menu-button.active');
+            activeMenus.forEach(menu => menu.classList.remove('active'));
+        });
+    }
 
-                // Ritorna le subtask ordinate
-                return [...orderedSubtasks, ...remainingSubtasks];
+    /**
+     * Gestisce il click sul timer di un task
+     * @param {Object} task - Task associato al timer
+     */
+    handleTimerClick(task) {
+        // Verifica se c'è un timer attivo
+        const timer = this.timerService.getTimer(task.id);
+
+        if (timer) {
+            // Timer esiste già, alterna pausa/avvio
+            if (timer.running) {
+                this.timerService.pauseTimer(task.id);
+            } else {
+                this.timerService.resumeTimer(task.id);
+            }
+
+            // Aggiorna la visualizzazione
+            this.updateTaskTimer(task.id);
+        } else {
+            // Nessun timer attivo, mostra impostazioni timer
+            this.showTimerSettings(task);
+        }
+    }
+
+    /**
+     * Mostra le impostazioni del timer
+     * @param {Object} task - Task associato al timer
+     */
+    showTimerSettings(task) {
+        // Qui si integrerebbe con un componente per le impostazioni del timer
+        // Per ora implementiamo una versione base
+
+        // Durata predefinita (25 minuti)
+        const defaultDuration = 25 * 60 * 1000;
+
+        // Usa durata dal task se disponibile
+        const duration = task.time_end_task || defaultDuration;
+
+        // Avvia il timer
+        this.timerService.startTimer(task.id, duration, {
+            taskName: task.content
+        });
+
+        // Aggiorna la visualizzazione
+        this.updateTaskTimer(task.id);
+    }
+
+    /**
+     * Aggiorna la visualizzazione del timer di un task
+     * @param {number|string} taskId - ID del task
+     */
+    updateTaskTimer(taskId) {
+        const taskElement = this.renderedTasks.get(taskId);
+        if (!taskElement) return;
+
+        const timerContainer = taskElement.querySelector('.task-timer');
+        if (!timerContainer) return;
+
+        const timer = this.timerService.getTimer(taskId);
+        if (!timer) return;
+
+        // Aggiorna classi
+        timerContainer.classList.add('active');
+        timerContainer.classList.toggle('running', timer.running);
+        timerContainer.classList.toggle('paused', !timer.running);
+
+        // Aggiorna icona
+        const iconElement = timerContainer.querySelector('i');
+        if (iconElement) {
+            iconElement.setAttribute('data-lucide', timer.running ? 'pause' : 'play');
+            // Aggiorna l'icona
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons({ scope: timerContainer });
+            }
+        }
+
+        // Aggiorna tempo
+        let timeText = timerContainer.querySelector('.timer-time');
+        if (!timeText) {
+            timeText = document.createElement('span');
+            timeText.className = 'timer-time';
+            timerContainer.appendChild(timeText);
+        }
+
+        // Formatta il tempo
+        timeText.textContent = this.timerService.formatTime(timer.timeLeft);
+    }
+
+    /**
+     * Aggiorna tutti i timer visualizzati
+     */
+    updateTimers() {
+        const timers = this.timerService.getAllTimers();
+
+        for (const taskId in timers) {
+            this.updateTaskTimer(taskId);
+        }
+    }
+
+    /**
+     * Alterna lo stato di completamento di un task
+     * @param {Object} task - Task da aggiornare
+     */
+    async toggleTaskCompletion(task) {
+        try {
+            const newCompletionState = !task.completed;
+            const completedAt = newCompletionState ? new Date().getTime() : null;
+
+            // Aggiorna nel database
+            const updatedTask = await this.db.updateTask(task.id, {
+                completed: newCompletionState,
+                completed_at: completedAt
+            });
+
+            // Aggiorna nello stato
+            this.appState.updateTask(updatedTask);
+
+            // Aggiorna la visualizzazione
+            this.updateTaskUI(updatedTask);
+
+            console.log(`TaskComponent: Task ${task.id} ${newCompletionState ? 'completato' : 'riattivato'}`);
+
+            // Se il task è stato completato, ferma eventuali timer
+            if (newCompletionState) {
+                this.timerService.stopTimer(task.id);
             }
         } catch (error) {
-            console.error('Errore nel parsing dell\'ordine delle subtask:', error);
+            console.error('TaskComponent: Errore durante l\'aggiornamento del completamento', error);
         }
     }
 
-    // In caso di errore o se non c'è un ordine salvato, ordina per position
-    return [...subtasks].sort((a, b) => a.position - b.position);
-}
+    /**
+     * Abilita la modifica del contenuto di un task
+     * @param {HTMLElement} taskElement - Elemento DOM del task
+     * @param {Object} task - Dati del task
+     */
+    editTaskContent(taskElement, task) {
+        const content = taskElement.querySelector('.task-content');
+        if (!content) return;
 
-/**
- * Aggiorna le statistiche nella sezione info
- * @param {Array} tasks - Le task da analizzare
- */
-function updateInfoStats(tasks) {
-    if (!tasks || tasks.length === 0) {
-        // Se non ci sono task, imposta tutti i contatori a zero
-        document.getElementById('completedCount').textContent = '0';
-        document.getElementById('totalTime').textContent = '0m';
-        document.getElementById('urgentTasksCount').textContent = '0';
-        document.getElementById('mediumTasksCount').textContent = '0';
-        document.getElementById('basicTasksCount').textContent = '0';
-        return;
+        // Abilita la modifica
+        content.contentEditable = 'true';
+        content.focus();
+
+        // Seleziona tutto il testo
+        const range = document.createRange();
+        range.selectNodeContents(content);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
     }
 
-    // Conta le task completate
-    const completedCount = tasks.filter(task => task.completed).length;
-    document.getElementById('completedCount').textContent = completedCount;
+    /**
+     * Salva il contenuto modificato di un task
+     * @param {Event} event - Evento blur
+     * @param {Object} task - Dati del task
+     */
+    async saveTaskContent(event, task) {
+        const content = event.target;
+        content.contentEditable = 'false';
 
-    // Calcola il tempo totale sommando i valori di time_end_task
-    let totalMinutes = 0;
+        const newContent = content.textContent.trim();
 
-    tasks.forEach(task => {
-        // Se la task ha un valore time_end_task, sommalo
-        if (task.time_end_task && !isNaN(task.time_end_task)) {
-            totalMinutes += parseInt(task.time_end_task);
-        }
-    });
-
-    // Aggiorna il tempo totale
-    document.getElementById('totalTime').textContent = formatTotalTime(totalMinutes);
-
-    // Filtra per escludere le task completate prima di contare per priorità
-    const activeTasks = tasks.filter(task => !task.completed);
-
-    // Aggiorna i contatori per priorità considerando solo le task attive
-    const urgentCount = activeTasks.filter(task => task.priority === 'urgent').length;
-    const mediumCount = activeTasks.filter(task => task.priority === 'medium').length;
-    const basicCount = activeTasks.filter(task => task.priority === 'normal').length;
-
-    document.getElementById('urgentTasksCount').textContent = urgentCount;
-    document.getElementById('mediumTasksCount').textContent = mediumCount;
-    document.getElementById('basicTasksCount').textContent = basicCount;
-}
-
-/**
- * Mostra/nasconde le task completate
- */
-function toggleCompletedTasks() {
-    const completedTasksList = document.getElementById('completedTasksList');
-    const completedButton = document.getElementById('completedTasksButton');
-
-    showCompletedTasks = !showCompletedTasks;
-
-    if (showCompletedTasks) {
-        completedTasksList.style.display = 'flex';
-        completedButton.classList.add('active');
-    } else {
-        completedTasksList.style.display = 'none';
-        completedButton.classList.remove('active');
-    }
-}
-
-/**
- * Aggiorna il contatore delle task completate
- */
-function updateCompletedCounter() {
-    const completedTasks = document.getElementById('completedTasksList').querySelectorAll('.task-container').length;
-    document.getElementById('completedCount').textContent = completedTasks.toString();
-
-    // Mostra/nascondi il contatore in base al numero di task completate
-    if (completedTasks > 0) {
-        document.getElementById('completedCount').style.display = 'inline-flex';
-    } else {
-        document.getElementById('completedCount').style.display = 'inline-flex'; // Modificato per mostrare sempre il contatore
-
-        // Se siamo nella vista delle task completate, torna alla vista normale
-        if (showCompletedTasks) {
-            toggleCompletedTasks();
-        }
-    }
-}
-
-/**
- * Crea un elemento task nell'interfaccia
- * @param {string} taskId - ID della task
- * @param {string} taskText - Testo della task
- * @param {string|null} parentId - ID della task genitore (null se è una task principale)
- * @param {Array} subtasks - Lista delle subtask
- * @param {string} priority - Priorità della task
- * @param {boolean} completed - Se la task è completata
- * @param {string|null} completed_at - Data di completamento (null se non completata)
- */
-function createTaskElement(taskId, taskText, parentId = null, subtasks = [], priority = 'normal', completed = false, completed_at = null) {
-    // Troveremo questo componente in un file separato
-    // per non appesantire troppo questo file
-}
-
-/**
- * Aggiunge un nuovo task al progetto corrente
- */
-async function addTask() {
-    console.log('Chiamata addTask con timestamp:', new Date().toISOString());
-
-    // Ottieni il valore di input
-    const taskInput = document.getElementById('taskInput');
-    if (!taskInput) {
-        console.error('Elemento taskInput non trovato nel DOM');
-        return;
-    }
-
-    // Verifica se c'è testo nell'input
-    const taskContent = taskInput.value.trim();
-    console.log('Contenuto input:', taskContent);
-
-    if (!taskContent) {
-        console.log('Input vuoto, task non aggiunto');
-        return;
-    }
-
-    // Ottieni l'ID del progetto corrente
-    const projectContainer = document.querySelector('.projects-container');
-    if (!projectContainer) {
-        console.error('Contenitore progetti non trovato nel DOM');
-        return;
-    }
-
-    const projectId = projectContainer.dataset.currentProjectId;
-    if (!projectId) {
-        console.error('Nessun progetto selezionato');
-        showStatus('Seleziona un progetto prima di aggiungere un task', 'error');
-        return;
-    }
-
-    console.log(`Aggiunta task al progetto: ${projectId}`);
-
-    try {
-        // Crea il nuovo task
-        const newTask = {
-            project_id: projectId,
-            content: taskContent,
-            completed: false,
-            created_at: new Date().getTime(),
-            priority: 'normal', // Default priority
-            date: null // No due date by default
-        };
-
-        console.log('Nuovo task creato:', newTask);
-
-        // Salva il task nel database
-        const savedTask = await databaseService.addTask(newTask);
-        console.log('Task salvato nel database:', savedTask);
-
-        // Aggiungi il task alla UI
-        const tasks = await databaseService.getTasksByProject(projectId);
-        renderTasks(tasks);
-
-        // Pulisci l'input e rimuovi la classe has-text
-        taskInput.value = '';
-        taskInput.classList.remove('has-text');
-
-        // Trova e rimuovi la classe has-text dal contenitore
-        const taskInputContainer = document.querySelector('.task-input-container');
-        if (taskInputContainer) {
-            taskInputContainer.classList.remove('has-text');
-            console.log('Classe has-text rimossa dal contenitore');
+        // Se il contenuto non è cambiato, non fare nulla
+        if (newContent === task.content) {
+            return;
         }
 
-        // Forza l'aggiornamento dell'interfaccia
-        taskInput.dispatchEvent(new Event('input'));
+        // Se il contenuto è vuoto, ripristina il valore precedente
+        if (newContent === '') {
+            content.textContent = task.content;
+            return;
+        }
 
-        console.log('Task aggiunto con successo');
-    } catch (error) {
-        console.error('Errore nell\'aggiunta del task:', error);
-        showStatus('Errore nell\'aggiunta del task', 'error');
-    }
-}
+        try {
+            // Aggiorna nel database
+            const updatedTask = await this.db.updateTask(task.id, {
+                content: newContent
+            });
 
-/**
- * Attiva/disattiva il filtro per priorità
- * @param {string} priority - Priorità da filtrare ('urgent', 'medium', 'basic')
- */
-function togglePriorityFilter(priority) {
-    // Inverti lo stato del filtro
-    activePriorityFilters[priority] = !activePriorityFilters[priority];
+            // Aggiorna nello stato
+            this.appState.updateTask(updatedTask);
 
-    // Aggiorna la visualizzazione del filtro
-    const filterElement = document.getElementById(`${priority}Filter`);
-    if (filterElement) {
-        if (activePriorityFilters[priority]) {
-            filterElement.classList.add('active');
-        } else {
-            filterElement.classList.remove('active');
+            console.log(`TaskComponent: Aggiornato contenuto del task ${task.id}`);
+        } catch (error) {
+            console.error('TaskComponent: Errore durante l\'aggiornamento del contenuto', error);
+            // Ripristina il valore precedente in caso di errore
+            content.textContent = task.content;
         }
     }
 
-    // Applica i filtri alle task
-    applyPriorityFilters();
-}
+    /**
+     * Aggiorna la priorità di un task
+     * @param {Object} task - Task da aggiornare
+     * @param {string} priority - Nuova priorità ('urgent', 'medium', 'normal')
+     */
+    async updateTaskPriority(task, priority) {
+        // Se la priorità è già impostata, la togliamo (imposta a normal)
+        const newPriority = task.priority === priority ? 'normal' : priority;
 
-/**
- * Applica i filtri di priorità alle task
- */
-function applyPriorityFilters() {
-    // Verifica se c'è almeno un filtro attivo
-    const hasActiveFilters = Object.values(activePriorityFilters).some(active => active);
+        try {
+            // Aggiorna nel database
+            const updatedTask = await this.db.updateTaskPriority(task.id, newPriority);
 
-    // Ottieni tutte le task non completate
-    const taskItems = document.querySelectorAll('#taskList .task-item:not(.completed)');
+            // Aggiorna nello stato
+            this.appState.updateTask(updatedTask);
 
-    if (hasActiveFilters) {
-        // Se ci sono filtri attivi, nascondi tutte le task
-        taskItems.forEach(task => {
-            task.closest('.task-container').style.display = 'none';
-        });
+            // Aggiorna la visualizzazione
+            this.updateTaskUI(updatedTask);
 
-        // Poi mostra solo quelle che corrispondono ai filtri attivi
-        taskItems.forEach(task => {
-            const hasPriority = (
-                (activePriorityFilters.urgent && task.classList.contains('priority-urgent')) ||
-                (activePriorityFilters.medium && task.classList.contains('priority-medium')) ||
-                (activePriorityFilters.basic && task.classList.contains('priority-normal'))
-            );
+            console.log(`TaskComponent: Aggiornata priorità del task ${task.id} a ${newPriority}`);
+        } catch (error) {
+            console.error('TaskComponent: Errore durante l\'aggiornamento della priorità', error);
+        }
+    }
 
-            if (hasPriority) {
-                task.closest('.task-container').style.display = 'flex';
+    /**
+     * Elimina un task
+     * @param {Object} task - Task da eliminare
+     */
+    async deleteTask(task) {
+        if (!confirm('Sei sicuro di voler eliminare questo task?')) {
+            return;
+        }
+
+        try {
+            // Elimina dal database
+            await this.db.deleteTask(task.id);
+
+            // Elimina dallo stato
+            this.appState.removeTask(task.id, task.project_id);
+
+            // Elimina eventuali timer
+            this.timerService.deleteTimer(task.id);
+
+            // Rimuovi dalla visualizzazione
+            const taskElement = this.renderedTasks.get(task.id);
+            if (taskElement) {
+                taskElement.remove();
+                this.renderedTasks.delete(task.id);
             }
+
+            console.log(`TaskComponent: Task ${task.id} eliminato`);
+        } catch (error) {
+            console.error('TaskComponent: Errore durante l\'eliminazione del task', error);
+        }
+    }
+
+    /**
+     * Aggiorna l'UI di un task in base ai dati aggiornati
+     * @param {Object} task - Task aggiornato
+     */
+    updateTaskUI(task) {
+        // Trova l'elemento del task
+        const taskElement = this.renderedTasks.get(task.id);
+        if (!taskElement) {
+            console.warn(`TaskComponent: Task ${task.id} non trovato nella mappa renderizzati`);
+            return;
+        }
+
+        // Aggiorna la classe completato
+        taskElement.classList.toggle('completed', task.completed);
+
+        // Aggiorna la checkbox
+        const checkbox = taskElement.querySelector('.task-checkbox');
+        if (checkbox) {
+            checkbox.classList.toggle('checked', task.completed);
+        }
+
+        // Aggiorna il contenuto
+        const content = taskElement.querySelector('.task-content');
+        if (content) {
+            content.textContent = task.content;
+        }
+
+        // Aggiorna la priorità
+        taskElement.className = taskElement.className.replace(/priority-\w+/g, '');
+        if (task.priority) {
+            taskElement.classList.add(`priority-${task.priority}`);
+        }
+
+        const priorityButtons = taskElement.querySelectorAll('.priority-button');
+        priorityButtons.forEach(button => {
+            button.classList.toggle('active', button.dataset.priority === task.priority);
         });
-    } else {
-        // Se non ci sono filtri attivi, mostra tutte le task
-        taskItems.forEach(task => {
-            task.closest('.task-container').style.display = 'flex';
+
+        // Aggiorna il timer se necessario
+        if (task.time_end_task) {
+            const timerElement = taskElement.querySelector('.task-timer');
+            if (timerElement) {
+                const timeText = timerElement.querySelector('.timer-time');
+                if (timeText) {
+                    timeText.textContent = this.formatTaskTime(task.time_end_task);
+                }
+            }
+        }
+
+        // Se il task è stato completato, spostalo nella lista dei completati
+        if (task.completed && taskElement.parentElement === this.elements.taskList) {
+            taskElement.remove();
+            this.elements.completedTasksList.appendChild(taskElement);
+            taskElement.draggable = false;
+        }
+        // Se il task è stato riattivato, spostalo nella lista principale
+        else if (!task.completed && taskElement.parentElement === this.elements.completedTasksList) {
+            taskElement.remove();
+            this.elements.taskList.appendChild(taskElement);
+            taskElement.draggable = true;
+
+            // Riordina i task
+            this.reorderTasksInDOM();
+        }
+    }
+
+    /**
+     * Applica i filtri ai task
+     * @param {Object} filters - Filtri da applicare
+     */
+    applyFilters(filters) {
+        // Applica i filtri a tutti i task renderizzati
+        this.renderedTasks.forEach((taskElement, taskId) => {
+            let visible = true;
+
+            // Filtro per completati
+            if (!filters.showCompleted && taskElement.classList.contains('completed')) {
+                visible = false;
+            }
+
+            // Filtro per priorità
+            if (filters.priorities && filters.priorities.length > 0) {
+                const taskPriority = Array.from(taskElement.classList)
+                    .find(cls => cls.startsWith('priority-'))
+                    ?.replace('priority-', '');
+
+                if (!filters.priorities.includes(taskPriority)) {
+                    visible = false;
+                }
+            }
+
+            // Filtro per ricerca
+            if (filters.searchQuery && filters.searchQuery.trim() !== '') {
+                const query = filters.searchQuery.trim().toLowerCase();
+                const content = taskElement.querySelector('.task-content')?.textContent.toLowerCase();
+
+                if (!content || !content.includes(query)) {
+                    visible = false;
+                }
+            }
+
+            // Applica visibilità
+            taskElement.style.display = visible ? 'flex' : 'none';
         });
+
+        // Aggiorna visibilità lista completati
+        if (this.elements.completedTasksList) {
+            this.elements.completedTasksList.style.display =
+                filters.showCompleted ? 'block' : 'none';
+        }
+    }
+
+    /**
+     * Gestisce l'inizio del drag
+     * @param {DragEvent} event - Evento dragstart
+     */
+    handleDragStart(event) {
+        if (!event.target.classList.contains('task-item')) return;
+
+        this.dragState.dragging = true;
+        this.dragState.draggedElement = event.target;
+
+        // Salva l'indice originale
+        const taskItems = Array.from(this.elements.taskList.querySelectorAll('.task-item:not(.completed)'));
+        this.dragState.originalIndex = taskItems.indexOf(event.target);
+
+        // Aggiungi classe di trascinamento
+        event.target.classList.add('dragging');
+
+        // Imposta i dati trasferiti
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', event.target.dataset.id);
+    }
+
+    /**
+     * Gestisce l'evento dragover
+     * @param {DragEvent} event - Evento dragover
+     */
+    handleDragOver(event) {
+        event.preventDefault();
+
+        if (!this.dragState.dragging) return;
+
+        // Trova l'elemento target valido
+        const targetElement = event.target.closest('.task-item');
+        if (!targetElement || targetElement.classList.contains('completed')) return;
+
+        // Non fare nulla se siamo sullo stesso elemento
+        if (targetElement === this.dragState.draggedElement) return;
+
+        // Rimuovi highlight precedente
+        if (this.dragState.currentHover && this.dragState.currentHover !== targetElement) {
+            this.dragState.currentHover.classList.remove('drag-over');
+        }
+
+        // Aggiungi highlight
+        targetElement.classList.add('drag-over');
+        this.dragState.currentHover = targetElement;
+    }
+
+    /**
+     * Gestisce l'evento dragleave
+     * @param {DragEvent} event - Evento dragleave
+     */
+    handleDragLeave(event) {
+        const targetElement = event.target.closest('.task-item');
+        if (targetElement) {
+            targetElement.classList.remove('drag-over');
+        }
+    }
+
+    /**
+     * Gestisce l'evento drop
+     * @param {DragEvent} event - Evento drop
+     */
+    handleDrop(event) {
+        event.preventDefault();
+
+        if (!this.dragState.dragging) return;
+
+        // Trova l'elemento target valido
+        const targetElement = event.target.closest('.task-item');
+        if (!targetElement || targetElement.classList.contains('completed')) return;
+
+        // Rimuovi classe di highlight
+        targetElement.classList.remove('drag-over');
+
+        // Se abbiamo rilasciato su un altro elemento
+        if (targetElement !== this.dragState.draggedElement) {
+            // Ottieni tutte le task visibili e non completate
+            const tasks = Array.from(this.elements.taskList.querySelectorAll('.task-item:not(.completed)'));
+
+            // Trova l'indice di destinazione
+            const targetIndex = tasks.indexOf(targetElement);
+
+            // Sposta l'elemento nel DOM
+            if (targetIndex > this.dragState.originalIndex) {
+                targetElement.parentNode.insertBefore(this.dragState.draggedElement, targetElement.nextSibling);
+            } else {
+                targetElement.parentNode.insertBefore(this.dragState.draggedElement, targetElement);
+            }
+
+            // Aggiorna le posizioni nel database
+            this.updateTaskPositions();
+        }
+    }
+
+    /**
+     * Gestisce la fine del drag
+     * @param {DragEvent} event - Evento dragend
+     */
+    handleDragEnd(event) {
+        // Rimuovi classe di trascinamento
+        event.target.classList.remove('dragging');
+
+        // Reset dello stato
+        this.dragState.dragging = false;
+        this.dragState.draggedElement = null;
+        this.dragState.originalIndex = -1;
+
+        // Rimuovi highlight da tutti gli elementi
+        const taskItems = document.querySelectorAll('.task-item');
+        taskItems.forEach(item => {
+            item.classList.remove('drag-over');
+        });
+    }
+
+    /**
+     * Aggiorna le posizioni dei task dopo un cambiamento nell'ordine
+     */
+    async updateTaskPositions() {
+        try {
+            // Ottieni tutti i task visibili e non completati
+            const taskElements = Array.from(this.elements.taskList.querySelectorAll('.task-item:not(.completed)'));
+
+            // Per ogni elemento, aggiorna la posizione
+            for (let i = 0; i < taskElements.length; i++) {
+                const taskId = taskElements[i].dataset.id;
+                const newPosition = i;
+
+                // Aggiorna la posizione nell'elemento DOM
+                taskElements[i].dataset.position = newPosition;
+
+                // Aggiorna nel database
+                await this.db.updateTaskPosition(taskId, newPosition);
+            }
+
+            console.log('TaskComponent: Posizioni dei task aggiornate');
+        } catch (error) {
+            console.error('TaskComponent: Errore durante l\'aggiornamento delle posizioni', error);
+        }
+    }
+
+    /**
+     * Gestisce i click sui task completati
+     * @param {Event} event - Evento click
+     */
+    handleCompletedTaskClick(event) {
+        const taskElement = event.target.closest('.task-item');
+        if (!taskElement) return;
+
+        // Se è un click sulla checkbox, gestisci il cambio di stato
+        if (event.target.closest('.task-checkbox')) {
+            const taskId = taskElement.dataset.id;
+            const projectId = this.appState.getState('activeProject')?.id;
+
+            if (!projectId) return;
+
+            // Trova il task nello stato
+            const tasks = this.appState.getState(`tasks.${projectId}`) || [];
+            const task = tasks.find(t => t.id == taskId);
+
+            if (task) {
+                this.toggleTaskCompletion(task);
+            }
+        }
+    }
+
+    /**
+     * Ordina i task in base alla posizione
+     * @param {Array} tasks - Array di task da ordinare
+     * @returns {Array} - Task ordinati
+     */
+    sortTasks(tasks) {
+        return [...tasks].sort((a, b) => {
+            // Prima per posizione (se definita)
+            if (a.position !== undefined && b.position !== undefined) {
+                return a.position - b.position;
+            }
+
+            // Poi per data di creazione
+            return new Date(a.created_at) - new Date(b.created_at);
+        });
+    }
+
+    /**
+     * Ordina i task completati in base alla data di completamento
+     * @param {Array} tasks - Array di task completati da ordinare
+     * @returns {Array} - Task ordinati
+     */
+    sortCompletedTasks(tasks) {
+        return [...tasks].sort((a, b) => {
+            // Prima per data di completamento (dal più recente)
+            if (a.completed_at && b.completed_at) {
+                return new Date(b.completed_at) - new Date(a.completed_at);
+            }
+
+            // Poi per data di creazione
+            return new Date(b.created_at) - new Date(a.created_at);
+        });
+    }
+
+    /**
+     * Riordina fisicamente i task nel DOM in base alla posizione
+     */
+    reorderTasksInDOM() {
+        // Ottieni tutti i task non completati
+        const taskElements = Array.from(this.elements.taskList.querySelectorAll('.task-item:not(.completed)'));
+
+        // Ordina in base alla posizione
+        taskElements.sort((a, b) => {
+            return parseInt(a.dataset.position || 0) - parseInt(b.dataset.position || 0);
+        });
+
+        // Rimuovi tutti i task dalla lista
+        taskElements.forEach(el => el.remove());
+
+        // Reinserisci in ordine corretto
+        taskElements.forEach(el => {
+            this.elements.taskList.appendChild(el);
+        });
+    }
+
+    /**
+     * Svuota le liste dei task
+     */
+    clearTaskList() {
+        if (this.elements.taskList) {
+            this.elements.taskList.innerHTML = '';
+        }
+
+        if (this.elements.completedTasksList) {
+            this.elements.completedTasksList.innerHTML = '';
+        }
+
+        // Resetta la mappa dei task renderizzati
+        this.renderedTasks.clear();
+    }
+
+    /**
+     * Pulisce le risorse utilizzate dal componente
+     */
+    cleanup() {
+        // Cancella gli ascoltatori
+        if (this.listeners.unsubscribeActive) {
+            this.listeners.unsubscribeActive();
+        }
+
+        if (this.listeners.unsubscribeCompleted) {
+            this.listeners.unsubscribeCompleted();
+        }
+
+        // Ferma il timer per i task giornalieri
+        if (this.dailyTasksTimer) {
+            clearInterval(this.dailyTasksTimer);
+            this.dailyTasksTimer = null;
+        }
+
+        // Svuota le liste
+        this.clearTaskList();
     }
 }
 
-/**
- * Salva l'ordine delle task
- */
-function saveTaskOrder() {
-    // Salva l'ordine delle task principali
-    const taskOrder = [];
-    document.querySelectorAll('#taskList > .task-container').forEach(container => {
-        taskOrder.push(container.dataset.taskId);
-    });
-
-    // Salva l'ordine nel localStorage
-    if (currentProjectId && taskOrder.length > 0) {
-        localStorage.setItem(`taskOrder_${currentProjectId}`, JSON.stringify(taskOrder));
-    }
-}
-
-/**
- * Mostra un messaggio di stato
- * @param {string} message - Messaggio da mostrare
- * @param {string} type - Tipo di messaggio ('success', 'error', 'info')
- */
-function showStatus(message, type = 'info') {
-    const statusMessage = document.getElementById('statusMessage');
-
-    statusMessage.textContent = message;
-    statusMessage.className = 'status-message ' + type;
-    statusMessage.style.opacity = '1';
-
-    // Nascondi dopo 3 secondi
-    setTimeout(() => {
-        statusMessage.style.opacity = '0';
-    }, 3000);
-} 
+export default TaskComponent; 

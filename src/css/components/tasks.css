@@ -25,6 +25,15 @@
     background-color: var(--color-surface-lighter);
 }
 
+/* Aggiungiamo uno stile specifico per le subtask trascinate per evitare sfondi indesiderati */
+.subtask.dragging {
+    opacity: 0.9;
+    box-shadow: var(--shadow-md);
+    z-index: 1000;
+    background-color: var(--color-surface-lighter) !important; /* colore forzato */
+    border-color: var(--color-border) !important; /* bordo neutro */
+}
+
 /* Task Content */
 .task-content {
     display: flex;
@@ -193,4 +202,18 @@ button.edit-icon:focus {
     color: var(--color-text-dim);
     margin-left: 8px;
     flex-shrink: 0;
+}
+
+/* Stile per le task sopra cui passa il drag */
+.drag-over {
+    /* Colore neutro invece dell'arancione */
+    background-color: var(--color-surface-highlight) !important;
+    border-color: var(--color-border) !important;
+}
+
+/* Stile per l'attivazione durante il drag */
+.drag-over-active {
+    background-color: var(--color-surface-highlight) !important;
+    border-color: var(--color-border) !important;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.1) !important;
 } 

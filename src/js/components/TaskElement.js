@@ -648,62 +648,86 @@ function handleDragLeave(e) {
 }
 
 /**
- * Gestisce il drop di una task
- * @param {DragEvent} e - Evento drag
+ * Gestisce il rilascio di un task durante il drag and drop
+ * @param {DragEvent} e - Evento drop
  */
 async function handleDrop(e) {
     e.preventDefault();
+    const targetContainer = e.currentTarget.closest('.task-container');
+    const dropZone = e.currentTarget;
 
-    // Ottieni l'ID della task trascinata
-    const draggedTaskId = e.dataTransfer.getData('text/plain');
-    if (!draggedTaskId || !draggedTask) return;
-
-    // Ottieni il container target
-    const targetContainer = e.currentTarget;
-
-    // Rimuovi tutti gli indicatori di drop
-    document.querySelectorAll('.task-drop-indicator').forEach(indicator => {
-        indicator.remove();
-    });
-
-    // Rimuovi l'evidenziazione dai potenziali genitori
-    document.querySelectorAll('.task-container').forEach(container => {
-        container.classList.remove('drag-over');
-        container.classList.remove('drag-over-active');
-    });
+    if (!targetContainer || !draggedTask) {
+        console.log('Drop ignorato: nessun contenitore target o task trascinata');
+        return;
+    }
 
     try {
-        // Controlla se dobbiamo rendere la task una subtask
-        if (targetContainer.classList.contains('drag-over-active')) {
-            // Ottieni l'ID della task target
-            const targetTaskId = targetContainer.dataset.taskId;
+        console.log('Inizio operazione di drop');
+        const draggedTaskId = draggedTask.querySelector('.task-item').dataset.taskId;
+        const targetTaskId = targetContainer.querySelector('.task-item').dataset.taskId;
 
-            // Aggiorna la task nel database
-            await databaseService.updateTask(draggedTaskId, { parent_id: targetTaskId });
+        if (!draggedTaskId || !targetTaskId) {
+            console.error('Drop fallito: ID mancanti', { draggedTaskId, targetTaskId });
+            showStatus('Impossibile spostare la task: ID mancanti', 'error');
+            return;
+        }
 
-            // Sposta il container nell'interfaccia
-            const subtasksContainer = targetContainer.querySelector('.subtasks-container');
-            if (subtasksContainer) {
-                subtasksContainer.appendChild(draggedTask);
-            }
-        } else {
-            // Determina dove inserire la task
-            const indicatorBefore = targetContainer.previousElementSibling;
-            const isBeforeIndicator = indicatorBefore && indicatorBefore.classList.contains('task-drop-indicator');
+        // Impedisci che una task diventi subtask di se stessa
+        if (draggedTaskId === targetTaskId) {
+            console.error('Drop fallito: impossibile spostare una task in se stessa');
+            showStatus('Una task non può essere spostata dentro se stessa', 'error');
+            return;
+        }
 
-            if (isBeforeIndicator) {
-                // Inserisci prima del target
-                targetContainer.parentNode.insertBefore(draggedTask, targetContainer);
-            } else {
-                // Inserisci dopo il target
-                const indicatorAfter = targetContainer.nextElementSibling;
-                const isAfterIndicator = indicatorAfter && indicatorAfter.classList.contains('task-drop-indicator');
+        // Controlla se la task da spostare ha già delle subtask
+        const isTargetSubtask = targetContainer.closest('.subtasks-container') !== null;
+        const isDraggedSubtask = draggedTask.closest('.subtasks-container') !== null;
 
-                if (isAfterIndicator) {
-                    // Inserisci dopo il target
-                    targetContainer.parentNode.insertBefore(draggedTask, indicatorAfter.nextElementSibling);
+        console.log('Analisi tipo di spostamento:', {
+            draggedTaskId,
+            targetTaskId,
+            isTargetSubtask,
+            isDraggedSubtask
+        });
+
+        // Impedisci che una task con subtask diventi a sua volta una subtask
+        const hasSubtasks = targetContainer.querySelector('.subtasks-container .task-container');
+        if (!isDraggedSubtask && hasSubtasks) {
+            console.error('Drop fallito: impossibile spostare una task con subtask come subtask');
+            showStatus('Non è possibile spostare una task con subtask dentro un\'altra task', 'error');
+            return;
+        }
+
+        // Identifica il tipo di operazione
+        if (dropZone.classList.contains('potential-parent')) {
+            console.log('Annida come subtask (solo se non è già una subtask)');
+            if (!isDraggedSubtask && !isTargetSubtask) {
+                try {
+                    await databaseService.updateTask(draggedTaskId, { parent_id: targetTaskId });
+                    console.log(`Task ${draggedTaskId} nidificata come subtask di ${targetTaskId}`);
+
+                    // Recupera le subtask esistenti per il target e aggiungi la nuova
+                    const subtasksContainer = targetContainer.querySelector('.subtasks-container');
+                    if (subtasksContainer) {
+                        subtasksContainer.appendChild(draggedTask);
+                        showStatus('Task aggiunta come subtask', 'success');
+                    } else {
+                        console.error('Subtasks container non trovato');
+                        showStatus('Errore nel posizionamento della subtask', 'error');
+                        // Ricarica le task per garantire la consistenza dei dati visualizzati
+                        location.reload();
+                    }
+                } catch (error) {
+                    console.error('Errore durante l\'aggiornamento del parent_id nel database:', error);
+                    const errorMessage = error.message || 'Errore durante la conversione in subtask';
+                    showStatus(`Errore: ${errorMessage}`, 'error');
+                    // Ricarica le task per garantire la consistenza dei dati visualizzati
+                    location.reload();
                 }
             }
+        } else {
+            // Gestisci il riordinamento standard
+            console.log('Riordinamento delle task');
 
             // Aggiorna il parent_id nel database
             const isDraggedInSubtasks = draggedTask.closest('.subtasks-container') !== null;
@@ -712,12 +736,28 @@ async function handleDrop(e) {
                 const parentTaskContainer = draggedTask.closest('.task-container[data-task-id]');
                 if (parentTaskContainer) {
                     const parentTaskId = parentTaskContainer.dataset.taskId;
-                    // Aggiorna la task nel database
-                    await databaseService.updateTask(draggedTaskId, { parent_id: parentTaskId });
+                    try {
+                        // Aggiorna la task nel database
+                        await databaseService.updateTask(draggedTaskId, { parent_id: parentTaskId });
+                        console.log(`Task ${draggedTaskId} spostata come subtask di ${parentTaskId}`);
+                        showStatus('Task riordinata', 'success');
+                    } catch (error) {
+                        console.error('Errore durante lo spostamento come subtask:', error);
+                        const errorMessage = error.message || 'Errore durante lo spostamento';
+                        showStatus(`Errore: ${errorMessage}`, 'error');
+                    }
                 }
             } else {
-                // Resetta il parent_id nel database
-                await databaseService.updateTask(draggedTaskId, { parent_id: null });
+                try {
+                    // Resetta il parent_id nel database
+                    await databaseService.updateTask(draggedTaskId, { parent_id: null });
+                    console.log(`Task ${draggedTaskId} spostata come task principale`);
+                    showStatus('Task riordinata', 'success');
+                } catch (error) {
+                    console.error('Errore durante la rimozione del parent_id:', error);
+                    const errorMessage = error.message || 'Errore durante lo spostamento';
+                    showStatus(`Errore: ${errorMessage}`, 'error');
+                }
             }
         }
 
@@ -726,6 +766,17 @@ async function handleDrop(e) {
 
     } catch (error) {
         console.error('Errore durante lo spostamento della task:', error);
-        showStatus('Errore durante lo spostamento della task', 'error');
+        const errorMessage = error.message || 'Problema durante lo spostamento';
+        showStatus(`Errore durante lo spostamento della task: ${errorMessage}`, 'error');
+
+        // In caso di errore grave, ricarica la pagina per assicurare la consistenza dei dati
+        setTimeout(() => {
+            location.reload();
+        }, 1500);
+    } finally {
+        // Rimuovi le classi CSS temporanee
+        document.querySelectorAll('.drag-over, .drag-over-active, .potential-parent').forEach(el => {
+            el.classList.remove('drag-over', 'drag-over-active', 'potential-parent');
+        });
     }
 } 

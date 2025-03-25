@@ -50,5 +50,5 @@
   --border-radius-lg: 8px;
   
   /* Colore di sfondo del menu progetti */
-  --projects-menu-bg: var(--color-background);
+  --projects-menu-bg: #f5f5f5;
 } 

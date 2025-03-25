@@ -1,637 +1,752 @@
 /**
- * Servizio per la gestione delle operazioni sul database
+ * DatabaseService - Gestisce l'interfacciamento con IndexedDB e Supabase
+ * Fornisce un'API unificata per la gestione dei dati dell'applicazione
  */
-
 class DatabaseService {
     constructor() {
+        this.db = null;
+        this.supabase = null;
+        this.isInitialized = false;
+        this.syncInProgress = false;
         this.dbName = 'taskManagerDB';
         this.dbVersion = 1;
-        this.db = null;
+        this.lastSync = null;
     }
 
     /**
-     * Inizializza il database
-     * @returns {Promise<IDBDatabase>} Promise che si risolve con il database inizializzato
+     * Inizializza il database e la connessione a Supabase
+     * @returns {Promise<void>}
      */
-    async initDB() {
-        if (this.db) return this.db;
+    async initialize() {
+        console.log('DatabaseService: Inizializzazione...');
 
+        if (this.isInitialized) {
+            console.log('DatabaseService: Già inizializzato');
+            return;
+        }
+
+        try {
+            // Inizializza IndexedDB
+            await this.initIndexedDB();
+
+            // Inizializza Supabase se disponibile
+            await this.initSupabase();
+
+            this.isInitialized = true;
+            console.log('DatabaseService: Inizializzazione completata');
+
+            // Sincronizza i dati con Supabase se disponibile
+            if (this.supabase) {
+                this.syncWithSupabase();
+            }
+        } catch (error) {
+            console.error('DatabaseService: Errore durante l\'inizializzazione', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Inizializza IndexedDB
+     * @returns {Promise<void>}
+     */
+    async initIndexedDB() {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(this.dbName, this.dbVersion);
 
             request.onerror = (event) => {
-                console.error('Errore durante l\'apertura del database:', event.target.error);
-                reject('Errore durante l\'apertura del database');
+                console.error('DatabaseService: Errore apertura IndexedDB', event);
+                reject(new Error('Impossibile aprire IndexedDB'));
             };
 
             request.onsuccess = (event) => {
                 this.db = event.target.result;
-                console.log('Database aperto con successo');
-                resolve(this.db);
+                console.log('DatabaseService: IndexedDB aperto con successo');
+                resolve();
             };
 
             request.onupgradeneeded = (event) => {
+                console.log('DatabaseService: Creazione/aggiornamento schema IndexedDB');
                 const db = event.target.result;
 
-                // Crea lo store dei progetti se non esiste
+                // Crea object store per i progetti se non esiste
                 if (!db.objectStoreNames.contains('projects')) {
                     const projectsStore = db.createObjectStore('projects', { keyPath: 'id', autoIncrement: true });
                     projectsStore.createIndex('name', 'name', { unique: false });
                     projectsStore.createIndex('created_at', 'created_at', { unique: false });
                 }
 
-                // Crea lo store delle task se non esiste
+                // Crea object store per i task se non esiste
                 if (!db.objectStoreNames.contains('tasks')) {
                     const tasksStore = db.createObjectStore('tasks', { keyPath: 'id', autoIncrement: true });
                     tasksStore.createIndex('project_id', 'project_id', { unique: false });
-                    tasksStore.createIndex('parent_id', 'parent_id', { unique: false });
                     tasksStore.createIndex('completed', 'completed', { unique: false });
-                    tasksStore.createIndex('priority', 'priority', { unique: false });
                     tasksStore.createIndex('created_at', 'created_at', { unique: false });
-                    tasksStore.createIndex('completed_at', 'completed_at', { unique: false });
                     tasksStore.createIndex('position', 'position', { unique: false });
-                    tasksStore.createIndex('daily_reset', 'daily_reset', { unique: false });
                 }
 
-                // Crea lo store per lo stato dell'applicazione se non esiste
-                if (!db.objectStoreNames.contains('app_state')) {
-                    const appStateStore = db.createObjectStore('app_state', { keyPath: 'key' });
-                    appStateStore.createIndex('key', 'key', { unique: true });
-                    appStateStore.createIndex('updated_at', 'updated_at', { unique: false });
-
-                    // Inizializza con alcuni stati di default
-                    const transaction = event.target.transaction;
-                    const store = transaction.objectStore('app_state');
-
-                    // Aggiunge l'elemento per l'ultimo progetto selezionato
-                    store.add({
-                        key: 'lastSelectedProject',
-                        value: null,
-                        updated_at: new Date().toISOString()
-                    });
+                // Crea object store per lo stato dell'app se non esiste
+                if (!db.objectStoreNames.contains('appState')) {
+                    db.createObjectStore('appState', { keyPath: 'key' });
                 }
-
-                console.log('Database creato/aggiornato con successo');
             };
         });
     }
 
     /**
-     * Carica tutti i progetti dal database
-     * @returns {Promise<Array>} Promise che si risolve con un array di progetti
+     * Inizializza la connessione a Supabase
+     * @returns {Promise<void>}
      */
-    async loadProjects() {
-        await this.initDB();
+    async initSupabase() {
+        // Verifica se Supabase è disponibile nell'ambiente
+        if (typeof supabaseClient !== 'undefined') {
+            try {
+                const { SUPABASE_URL, SUPABASE_KEY } = await this.getSupabaseCredentials();
 
+                if (SUPABASE_URL && SUPABASE_KEY) {
+                    this.supabase = supabaseClient.createClient(SUPABASE_URL, SUPABASE_KEY);
+                    console.log('DatabaseService: Supabase inizializzato');
+
+                    // Carica l'ultima sincronizzazione
+                    const syncData = await this.getAppState('lastSync');
+                    if (syncData) {
+                        this.lastSync = new Date(syncData.value);
+                        console.log(`DatabaseService: Ultima sincronizzazione: ${this.lastSync}`);
+                    }
+                } else {
+                    console.log('DatabaseService: Credenziali Supabase non disponibili');
+                }
+            } catch (error) {
+                console.error('DatabaseService: Errore inizializzazione Supabase', error);
+                // Continuiamo con solo IndexedDB
+            }
+        } else {
+            console.log('DatabaseService: Supabase non disponibile, utilizzo solo IndexedDB');
+        }
+    }
+
+    /**
+     * Ottiene le credenziali per Supabase
+     * @returns {Promise<{SUPABASE_URL: string, SUPABASE_KEY: string}>}
+     */
+    async getSupabaseCredentials() {
+        // Prova a caricare le credenziali dallo storage
+        const credentials = await this.getAppState('supabaseCredentials');
+
+        if (credentials) {
+            return credentials.value;
+        }
+
+        // Credenziali predefinite (vuote)
+        return {
+            SUPABASE_URL: '',
+            SUPABASE_KEY: ''
+        };
+    }
+
+    /**
+     * Salva le credenziali di Supabase
+     * @param {string} url - URL di Supabase
+     * @param {string} key - Chiave API di Supabase
+     * @returns {Promise<void>}
+     */
+    async saveSupabaseCredentials(url, key) {
+        await this.saveAppState('supabaseCredentials', { SUPABASE_URL: url, SUPABASE_KEY: key });
+
+        // Reinizializza Supabase con le nuove credenziali
+        await this.initSupabase();
+    }
+
+    /**
+     * Sincronizza i dati con Supabase
+     * @returns {Promise<void>}
+     */
+    async syncWithSupabase() {
+        if (!this.supabase || this.syncInProgress) {
+            return;
+        }
+
+        try {
+            this.syncInProgress = true;
+            console.log('DatabaseService: Sincronizzazione con Supabase in corso...');
+
+            // Ottieni tutti i dati locali
+            const projects = await this.getAllProjects();
+            const tasks = await this.getAllTasks();
+
+            // Sincronizza i progetti
+            await this.syncProjects(projects);
+
+            // Sincronizza i task
+            await this.syncTasks(tasks);
+
+            // Aggiorna l'ultima sincronizzazione
+            this.lastSync = new Date();
+            await this.saveAppState('lastSync', this.lastSync);
+
+            console.log('DatabaseService: Sincronizzazione completata');
+        } catch (error) {
+            console.error('DatabaseService: Errore durante la sincronizzazione', error);
+        } finally {
+            this.syncInProgress = false;
+        }
+    }
+
+    /**
+     * Sincronizza i progetti con Supabase
+     * @param {Array} localProjects - Progetti locali
+     * @returns {Promise<void>}
+     */
+    async syncProjects(localProjects) {
+        if (!this.supabase) return;
+
+        try {
+            // Ottieni i progetti da Supabase
+            const { data: remoteProjects, error } = await this.supabase
+                .from('projects')
+                .select('*');
+
+            if (error) throw error;
+
+            // Mappa per controllo rapido
+            const remoteProjectsMap = {};
+            remoteProjects.forEach(project => {
+                remoteProjectsMap[project.id] = project;
+            });
+
+            // Sincronizza progetti locali verso il cloud
+            for (const localProject of localProjects) {
+                if (remoteProjectsMap[localProject.id]) {
+                    // Aggiorna progetto esistente se più recente
+                    const remoteProject = remoteProjectsMap[localProject.id];
+                    if (new Date(localProject.updated_at) > new Date(remoteProject.updated_at)) {
+                        await this.supabase
+                            .from('projects')
+                            .update(localProject)
+                            .eq('id', localProject.id);
+                    }
+                } else {
+                    // Inserisci nuovo progetto
+                    await this.supabase
+                        .from('projects')
+                        .insert(localProject);
+                }
+            }
+
+            // Sincronizza progetti cloud verso locale
+            for (const remoteProject of remoteProjects) {
+                const localProject = localProjects.find(p => p.id === remoteProject.id);
+
+                if (!localProject) {
+                    // Progetto nuovo da remoto
+                    await this.addProject(remoteProject);
+                } else if (new Date(remoteProject.updated_at) > new Date(localProject.updated_at)) {
+                    // Aggiorna progetto locale se remoto più recente
+                    await this.updateProject(remoteProject.id, remoteProject);
+                }
+            }
+        } catch (error) {
+            console.error('DatabaseService: Errore sincronizzazione progetti', error);
+        }
+    }
+
+    /**
+     * Sincronizza i task con Supabase
+     * @param {Array} localTasks - Task locali
+     * @returns {Promise<void>}
+     */
+    async syncTasks(localTasks) {
+        if (!this.supabase) return;
+
+        try {
+            // Ottieni i task da Supabase
+            const { data: remoteTasks, error } = await this.supabase
+                .from('tasks')
+                .select('*');
+
+            if (error) throw error;
+
+            // Mappa per controllo rapido
+            const remoteTasksMap = {};
+            remoteTasks.forEach(task => {
+                remoteTasksMap[task.id] = task;
+            });
+
+            // Sincronizza task locali verso il cloud
+            for (const localTask of localTasks) {
+                if (remoteTasksMap[localTask.id]) {
+                    // Aggiorna task esistente se più recente
+                    const remoteTask = remoteTasksMap[localTask.id];
+                    if (new Date(localTask.updated_at) > new Date(remoteTask.updated_at)) {
+                        await this.supabase
+                            .from('tasks')
+                            .update(localTask)
+                            .eq('id', localTask.id);
+                    }
+                } else {
+                    // Inserisci nuovo task
+                    await this.supabase
+                        .from('tasks')
+                        .insert(localTask);
+                }
+            }
+
+            // Sincronizza task cloud verso locale
+            for (const remoteTask of remoteTasks) {
+                const localTask = localTasks.find(t => t.id === remoteTask.id);
+
+                if (!localTask) {
+                    // Task nuovo da remoto
+                    await this.addTask(remoteTask);
+                } else if (new Date(remoteTask.updated_at) > new Date(localTask.updated_at)) {
+                    // Aggiorna task locale se remoto più recente
+                    await this.updateTask(remoteTask.id, remoteTask);
+                }
+            }
+        } catch (error) {
+            console.error('DatabaseService: Errore sincronizzazione task', error);
+        }
+    }
+
+    /**
+     * Esegue una transazione su IndexedDB
+     * @param {string} storeName - Nome dello store
+     * @param {string} mode - Modalità ('readonly' o 'readwrite')
+     * @param {Function} callback - Funzione da eseguire nella transazione
+     * @returns {Promise<any>} - Risultato della transazione
+     */
+    async dbTransaction(storeName, mode, callback) {
         return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['projects'], 'readonly');
-            const store = transaction.objectStore('projects');
-            const request = store.getAll();
+            if (!this.db) {
+                reject(new Error('Database non inizializzato'));
+                return;
+            }
 
-            request.onsuccess = () => {
-                resolve(request.result || []);
-            };
+            const transaction = this.db.transaction(storeName, mode);
+            const store = transaction.objectStore(storeName);
 
-            request.onerror = (event) => {
-                console.error('Errore durante il caricamento dei progetti:', event.target.error);
-                reject('Errore durante il caricamento dei progetti');
-            };
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = (event) => reject(event.target.error);
+
+            callback(store, resolve, reject);
+        });
+    }
+
+    // =====================================================================
+    // PROGETTI
+    // =====================================================================
+
+    /**
+     * Ottiene tutti i progetti dal database
+     * @returns {Promise<Array>} - Lista dei progetti
+     */
+    async getAllProjects() {
+        return new Promise((resolve, reject) => {
+            this.dbTransaction('projects', 'readonly', (store, _, reject) => {
+                const request = store.getAll();
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
         });
     }
 
     /**
-     * Crea un nuovo progetto
-     * @param {Object} projectData - Dati del progetto
-     * @returns {Promise<number>} Promise che si risolve con l'ID del progetto creato
+     * Ottiene un progetto specifico dal database
+     * @param {number|string} id - ID del progetto
+     * @returns {Promise<Object>} - Progetto
      */
-    async createProject(projectData) {
-        await this.initDB();
+    async getProject(id) {
+        return new Promise((resolve, reject) => {
+            this.dbTransaction('projects', 'readonly', (store, _, reject) => {
+                const request = store.get(Number(id));
 
-        // Aggiungi la data di creazione
-        projectData.created_at = new Date().toISOString();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        });
+    }
+
+    /**
+     * Aggiunge un nuovo progetto
+     * @param {Object} project - Dati del progetto
+     * @returns {Promise<Object>} - Progetto aggiunto con ID generato
+     */
+    async addProject(project) {
+        const now = new Date();
+        const newProject = {
+            ...project,
+            created_at: project.created_at || now.getTime(),
+            updated_at: now.getTime()
+        };
 
         return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['projects'], 'readwrite');
-            const store = transaction.objectStore('projects');
-            const request = store.add(projectData);
+            this.dbTransaction('projects', 'readwrite', (store, _, reject) => {
+                const request = store.add(newProject);
 
-            request.onsuccess = () => {
-                resolve(request.result);
-            };
+                request.onsuccess = () => {
+                    // Recupera il progetto con l'ID generato
+                    const getRequest = store.get(request.result);
+                    getRequest.onsuccess = () => resolve(getRequest.result);
+                };
 
-            request.onerror = (event) => {
-                console.error('Errore durante la creazione del progetto:', event.target.error);
-                reject('Errore durante la creazione del progetto');
-            };
+                request.onerror = (event) => reject(event.target.error);
+            });
         });
     }
 
     /**
      * Aggiorna un progetto esistente
-     * @param {number} projectId - ID del progetto
-     * @param {Object} projectData - Nuovi dati del progetto
-     * @returns {Promise<void>} Promise che si risolve quando l'aggiornamento è completato
+     * @param {number|string} id - ID del progetto
+     * @param {Object} projectData - Dati aggiornati
+     * @returns {Promise<Object>} - Progetto aggiornato
      */
-    async updateProject(projectId, projectData) {
-        await this.initDB();
+    async updateProject(id, projectData) {
+        // Ottieni il progetto esistente
+        const existingProject = await this.getProject(Number(id));
+
+        if (!existingProject) {
+            throw new Error(`Progetto con ID ${id} non trovato`);
+        }
+
+        // Aggiorna il progetto
+        const updatedProject = {
+            ...existingProject,
+            ...projectData,
+            id: existingProject.id, // Mantieni l'ID originale
+            updated_at: new Date().getTime()
+        };
 
         return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['projects'], 'readwrite');
-            const store = transaction.objectStore('projects');
-            const request = store.get(projectId);
+            this.dbTransaction('projects', 'readwrite', (store, _, reject) => {
+                const request = store.put(updatedProject);
 
-            request.onsuccess = () => {
-                const project = request.result;
-                if (!project) {
-                    reject(`Progetto con ID ${projectId} non trovato`);
-                    return;
-                }
-
-                // Aggiorna i dati del progetto
-                const updatedProject = { ...project, ...projectData };
-                const updateRequest = store.put(updatedProject);
-
-                updateRequest.onsuccess = () => {
-                    resolve();
-                };
-
-                updateRequest.onerror = (event) => {
-                    console.error('Errore durante l\'aggiornamento del progetto:', event.target.error);
-                    reject('Errore durante l\'aggiornamento del progetto');
-                };
-            };
-
-            request.onerror = (event) => {
-                console.error('Errore durante il recupero del progetto:', event.target.error);
-                reject('Errore durante il recupero del progetto');
-            };
+                request.onsuccess = () => resolve(updatedProject);
+                request.onerror = (event) => reject(event.target.error);
+            });
         });
     }
 
     /**
-     * Elimina un progetto e tutte le sue task
-     * @param {number} projectId - ID del progetto
-     * @returns {Promise<void>} Promise che si risolve quando l'eliminazione è completata
+     * Elimina un progetto e tutti i suoi task
+     * @param {number|string} id - ID del progetto
+     * @returns {Promise<void>}
      */
-    async deleteProject(projectId) {
-        await this.initDB();
+    async deleteProject(id) {
+        const numericId = Number(id);
 
-        return new Promise(async (resolve, reject) => {
-            // Prima elimina tutte le task associate al progetto
-            try {
-                await this.deleteTasksByProjectId(projectId);
-            } catch (error) {
-                console.error('Errore durante l\'eliminazione delle task del progetto:', error);
-                reject(error);
-                return;
-            }
+        // Elimina il progetto
+        await new Promise((resolve, reject) => {
+            this.dbTransaction('projects', 'readwrite', (store, _, reject) => {
+                const request = store.delete(numericId);
 
-            // Poi elimina il progetto
-            const transaction = this.db.transaction(['projects'], 'readwrite');
-            const store = transaction.objectStore('projects');
-            const request = store.delete(projectId);
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject(event.target.error);
+            });
+        });
 
-            request.onsuccess = () => {
-                resolve();
-            };
+        // Elimina tutti i task associati al progetto
+        const tasks = await this.getTasksByProject(numericId);
 
-            request.onerror = (event) => {
-                console.error('Errore durante l\'eliminazione del progetto:', event.target.error);
-                reject('Errore durante l\'eliminazione del progetto');
-            };
+        for (const task of tasks) {
+            await this.deleteTask(task.id);
+        }
+    }
+
+    // =====================================================================
+    // TASK
+    // =====================================================================
+
+    /**
+     * Ottiene tutti i task dal database
+     * @returns {Promise<Array>} - Lista dei task
+     */
+    async getAllTasks() {
+        return new Promise((resolve, reject) => {
+            this.dbTransaction('tasks', 'readonly', (store, _, reject) => {
+                const request = store.getAll();
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
         });
     }
 
     /**
-     * Carica tutte le task di un progetto
-     * @param {number} projectId - ID del progetto
-     * @returns {Promise<Array>} Promise che si risolve con un array di task
+     * Ottiene un task specifico dal database
+     * @param {number|string} id - ID del task
+     * @returns {Promise<Object>} - Task
      */
-    async loadTasks(projectId) {
-        await this.initDB();
+    async getTask(id) {
+        return new Promise((resolve, reject) => {
+            this.dbTransaction('tasks', 'readonly', (store, _, reject) => {
+                const request = store.get(Number(id));
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        });
+    }
+
+    /**
+     * Ottiene tutti i task di un progetto
+     * @param {number|string} projectId - ID del progetto
+     * @returns {Promise<Array>} - Lista dei task del progetto
+     */
+    async getTasksByProject(projectId) {
+        return new Promise((resolve, reject) => {
+            this.dbTransaction('tasks', 'readonly', (store, _, reject) => {
+                const index = store.index('project_id');
+                const request = index.getAll(Number(projectId));
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        });
+    }
+
+    /**
+     * Aggiunge un nuovo task
+     * @param {Object} task - Dati del task
+     * @returns {Promise<Object>} - Task aggiunto con ID generato
+     */
+    async addTask(task) {
+        const now = new Date();
+        const newTask = {
+            ...task,
+            created_at: task.created_at || now.getTime(),
+            updated_at: now.getTime()
+        };
+
+        // Calcola la posizione se non specificata
+        if (!newTask.position) {
+            const tasks = await this.getTasksByProject(newTask.project_id);
+            newTask.position = tasks.length > 0 ?
+                Math.max(...tasks.map(t => t.position || 0)) + 1 : 0;
+        }
 
         return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['tasks'], 'readonly');
-            const store = transaction.objectStore('tasks');
-            const index = store.index('project_id');
-            const request = index.getAll(IDBKeyRange.only(projectId));
-
-            request.onsuccess = () => {
-                resolve(request.result || []);
-            };
-
-            request.onerror = (event) => {
-                console.error('Errore durante il caricamento delle task:', event.target.error);
-                reject('Errore durante il caricamento delle task');
-            };
-        });
-    }
-
-    /**
-     * Carica una singola task dal database
-     * @param {number} taskId - ID della task
-     * @returns {Promise<Object>} Promise che si risolve con la task
-     */
-    async loadTask(taskId) {
-        await this.initDB();
-
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['tasks'], 'readonly');
-            const store = transaction.objectStore('tasks');
-            const request = store.get(taskId);
-
-            request.onsuccess = () => {
-                resolve(request.result);
-            };
-
-            request.onerror = (event) => {
-                console.error('Errore durante il caricamento della task:', event.target.error);
-                reject('Errore durante il caricamento della task');
-            };
-        });
-    }
-
-    /**
-     * Crea una nuova task
-     * @param {Object} taskData - Dati della task
-     * @returns {Promise<number>} Promise che si risolve con l'ID della task creata
-     */
-    async createTask(taskData) {
-        await this.initDB();
-
-        // Aggiungi le date
-        taskData.created_at = new Date().toISOString();
-        taskData.updated_at = taskData.created_at;
-
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['tasks'], 'readwrite');
-            const store = transaction.objectStore('tasks');
-            const request = store.add(taskData);
-
-            request.onsuccess = () => {
-                resolve(request.result);
-            };
-
-            request.onerror = (event) => {
-                console.error('Errore durante la creazione della task:', event.target.error);
-                reject('Errore durante la creazione della task');
-            };
-        });
-    }
-
-    /**
-     * Aggiorna una task esistente
-     * @param {number} taskId - ID della task
-     * @param {Object} taskData - Nuovi dati della task
-     * @returns {Promise<void>} Promise che si risolve quando l'aggiornamento è completato
-     */
-    async updateTask(taskId, taskData) {
-        await this.initDB();
-
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['tasks'], 'readwrite');
-            const store = transaction.objectStore('tasks');
-            const request = store.get(taskId);
-
-            request.onsuccess = () => {
-                const task = request.result;
-                if (!task) {
-                    reject(`Task con ID ${taskId} non trovata`);
-                    return;
-                }
-
-                // Aggiorna i dati della task
-                const updatedTask = { ...task, ...taskData, updated_at: new Date().toISOString() };
-                const updateRequest = store.put(updatedTask);
-
-                updateRequest.onsuccess = () => {
-                    resolve();
-                };
-
-                updateRequest.onerror = (event) => {
-                    console.error('Errore durante l\'aggiornamento della task:', event.target.error);
-                    reject('Errore durante l\'aggiornamento della task');
-                };
-            };
-
-            request.onerror = (event) => {
-                console.error('Errore durante il recupero della task:', event.target.error);
-                reject('Errore durante il recupero della task');
-            };
-        });
-    }
-
-    /**
-     * Elimina una task e tutte le sue subtask
-     * @param {number} taskId - ID della task
-     * @returns {Promise<void>} Promise che si risolve quando l'eliminazione è completata
-     */
-    async deleteTask(taskId) {
-        await this.initDB();
-
-        return new Promise(async (resolve, reject) => {
-            try {
-                // Prima elimina tutte le subtask
-                await this.deleteSubtasks(taskId);
-
-                // Poi elimina la task
-                const transaction = this.db.transaction(['tasks'], 'readwrite');
-                const store = transaction.objectStore('tasks');
-                const request = store.delete(taskId);
+            this.dbTransaction('tasks', 'readwrite', (store, _, reject) => {
+                const request = store.add(newTask);
 
                 request.onsuccess = () => {
-                    resolve();
+                    // Recupera il task con l'ID generato
+                    const getRequest = store.get(request.result);
+                    getRequest.onsuccess = () => resolve(getRequest.result);
                 };
 
-                request.onerror = (event) => {
-                    console.error('Errore durante l\'eliminazione della task:', event.target.error);
-                    reject('Errore durante l\'eliminazione della task');
-                };
-            } catch (error) {
-                reject(error);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        });
+    }
+
+    /**
+     * Aggiorna un task esistente
+     * @param {number|string} id - ID del task
+     * @param {Object} taskData - Dati aggiornati
+     * @returns {Promise<Object>} - Task aggiornato
+     */
+    async updateTask(id, taskData) {
+        try {
+            console.log(`DatabaseService: Aggiornamento task ${id}`, taskData);
+
+            // Normalizza l'ID in formato numerico
+            const numericId = Number(id);
+
+            // Ottieni il task esistente
+            const existingTask = await this.getTask(numericId);
+
+            if (!existingTask) {
+                const error = new Error(`Task con ID ${id} non trovato`);
+                console.error('DatabaseService: updateTask fallito -', error.message);
+                throw error;
             }
-        });
-    }
 
-    /**
-     * Elimina tutte le subtask di una task
-     * @param {number} parentId - ID della task genitore
-     * @returns {Promise<void>} Promise che si risolve quando l'eliminazione è completata
-     */
-    async deleteSubtasks(parentId) {
-        await this.initDB();
-
-        return new Promise(async (resolve, reject) => {
-            try {
-                const transaction = this.db.transaction(['tasks'], 'readwrite');
-                const store = transaction.objectStore('tasks');
-                const index = store.index('parent_id');
-                const request = index.getAll(IDBKeyRange.only(parentId));
-
-                request.onsuccess = async () => {
-                    const subtasks = request.result || [];
-
-                    // Elimina ricorsivamente tutte le subtask
-                    for (const subtask of subtasks) {
-                        await this.deleteTask(subtask.id);
-                    }
-
-                    resolve();
-                };
-
-                request.onerror = (event) => {
-                    console.error('Errore durante il recupero delle subtask:', event.target.error);
-                    reject('Errore durante il recupero delle subtask');
-                };
-            } catch (error) {
-                reject(error);
-            }
-        });
-    }
-
-    /**
-     * Elimina tutte le task di un progetto
-     * @param {number} projectId - ID del progetto
-     * @returns {Promise<void>} Promise che si risolve quando l'eliminazione è completata
-     */
-    async deleteTasksByProjectId(projectId) {
-        await this.initDB();
-
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['tasks'], 'readwrite');
-            const store = transaction.objectStore('tasks');
-            const index = store.index('project_id');
-            const request = index.getAll(IDBKeyRange.only(projectId));
-
-            request.onsuccess = async () => {
-                const tasks = request.result || [];
-
-                try {
-                    // Elimina ogni task (questo eliminerà anche le relative subtask)
-                    for (const task of tasks) {
-                        if (!task.parent_id) { // Elimina solo le task principali
-                            await this.deleteTask(task.id);
-                        }
-                    }
-
-                    resolve();
-                } catch (error) {
-                    reject(error);
-                }
-            };
-
-            request.onerror = (event) => {
-                console.error('Errore durante il recupero delle task del progetto:', event.target.error);
-                reject('Errore durante il recupero delle task del progetto');
-            };
-        });
-    }
-
-    /**
-     * Carica tutte le task giornaliere che devono essere resettate
-     * @returns {Promise<Array>} Promise che si risolve con un array di task
-     */
-    async loadDailyTasksToReset() {
-        await this.initDB();
-
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['tasks'], 'readonly');
-            const store = transaction.objectStore('tasks');
-            const index = store.index('daily_reset');
-            const request = index.getAll(IDBKeyRange.only(true));
-
-            request.onsuccess = () => {
-                const tasks = request.result || [];
-
-                // Filtra le task completate che devono essere resettate
-                const tasksToReset = tasks.filter(task => {
-                    if (!task.completed || !task.completed_at) return false;
-
-                    // Controlla se la data di completamento è antecedente a oggi
-                    const completedDate = new Date(task.completed_at);
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-
-                    return completedDate < today;
-                });
-
-                resolve(tasksToReset);
-            };
-
-            request.onerror = (event) => {
-                console.error('Errore durante il caricamento delle task giornaliere:', event.target.error);
-                reject('Errore durante il caricamento delle task giornaliere');
-            };
-        });
-    }
-
-    /**
-     * Resetta lo stato di completamento delle task giornaliere
-     * @param {Array} tasks - Task da resettare
-     * @returns {Promise<void>} Promise che si risolve quando il reset è completato
-     */
-    async resetDailyTasks(tasks) {
-        await this.initDB();
-
-        return new Promise(async (resolve, reject) => {
-            try {
-                for (const task of tasks) {
-                    await this.updateTask(task.id, {
-                        completed: false,
-                        completed_at: null
-                    });
+            // Validazioni sui campi prima dell'aggiornamento
+            if (taskData.parent_id !== undefined) {
+                if (taskData.parent_id === numericId) {
+                    const error = new Error('Un task non può essere parent di se stesso');
+                    console.error('DatabaseService: updateTask fallito -', error.message);
+                    throw error;
                 }
 
-                resolve();
-            } catch (error) {
-                console.error('Errore durante il reset delle task giornaliere:', error);
-                reject(error);
-            }
-        });
-    }
-
-    /**
-     * Salva lo stato dell'applicazione in IndexedDB
-     * @param {string} key - Chiave dello stato
-     * @param {*} value - Valore da salvare
-     * @returns {Promise<void>} Promise che si risolve quando il salvataggio è completato
-     */
-    async saveAppState(key, value) {
-        await this.initDB();
-
-        return new Promise((resolve, reject) => {
-            try {
-                const transaction = this.db.transaction(['app_state'], 'readwrite');
-                const store = transaction.objectStore('app_state');
-                const request = store.get(key);
-
-                request.onsuccess = (event) => {
-                    let stateData = {
-                        key: key,
-                        value: value,
-                        updated_at: new Date().toISOString()
-                    };
-
-                    // Se l'elemento esiste già, aggiorniamo il suo valore
-                    if (event.target.result) {
-                        stateData = { ...event.target.result, ...stateData };
+                // Se stiamo impostando un parent_id, verifichiamo che il parent esista
+                if (taskData.parent_id !== null) {
+                    const parentTask = await this.getTask(Number(taskData.parent_id));
+                    if (!parentTask) {
+                        const error = new Error(`Task parent con ID ${taskData.parent_id} non trovato`);
+                        console.error('DatabaseService: updateTask fallito -', error.message);
+                        throw error;
                     }
+                }
+            }
 
-                    const updateRequest = store.put(stateData);
+            // Aggiorna il task
+            const updatedTask = {
+                ...existingTask,
+                ...taskData,
+                id: existingTask.id, // Mantieni l'ID originale
+                updated_at: new Date().getTime()
+            };
 
-                    updateRequest.onsuccess = () => {
-                        console.log(`Stato dell'app salvato: ${key}`, value);
-                        resolve();
+            return new Promise((resolve, reject) => {
+                this.dbTransaction('tasks', 'readwrite', (store, _, reject) => {
+                    const request = store.put(updatedTask);
+
+                    request.onsuccess = () => {
+                        console.log(`DatabaseService: Task ${id} aggiornato con successo`);
+                        resolve(updatedTask);
                     };
 
-                    updateRequest.onerror = (error) => {
-                        console.error(`Errore durante il salvataggio dello stato dell'app: ${key}`, error);
+                    request.onerror = (event) => {
+                        const error = event.target.error;
+                        console.error(`DatabaseService: Errore durante l'aggiornamento del task ${id}`, error);
                         reject(error);
                     };
-                };
-
-                request.onerror = (error) => {
-                    console.error(`Errore durante il recupero dello stato dell'app: ${key}`, error);
-                    reject(error);
-                };
-            } catch (error) {
-                console.error(`Errore durante l'operazione su IndexedDB: ${key}`, error);
-                reject(error);
-            }
-        });
-    }
-
-    /**
-     * Recupera lo stato dell'applicazione da IndexedDB
-     * @param {string} key - Chiave dello stato
-     * @returns {Promise<*>} Promise che si risolve con il valore dello stato
-     */
-    async getAppState(key) {
-        await this.initDB();
-
-        return new Promise((resolve, reject) => {
-            try {
-                const transaction = this.db.transaction(['app_state'], 'readonly');
-                const store = transaction.objectStore('app_state');
-                const request = store.get(key);
-
-                request.onsuccess = (event) => {
-                    const result = event.target.result;
-                    console.log(`Stato dell'app recuperato: ${key}`, result);
-
-                    // Se l'elemento esiste, restituisci il suo valore
-                    if (result) {
-                        resolve(result.value);
-                    } else {
-                        resolve(null);
-                    }
-                };
-
-                request.onerror = (error) => {
-                    console.error(`Errore durante il recupero dello stato dell'app: ${key}`, error);
-                    reject(error);
-                };
-            } catch (error) {
-                console.error(`Errore durante l'operazione su IndexedDB: ${key}`, error);
-                reject(error);
-            }
-        });
-    }
-
-    /**
-     * Salva l'ultimo progetto selezionato in IndexedDB
-     * @param {Object} projectData - Dati del progetto
-     * @returns {Promise<void>} Promise che si risolve quando il salvataggio è completato
-     */
-    async saveLastSelectedProject(projectData) {
-        // Salva sia in localStorage (per compatibilità) che in IndexedDB (per persistenza)
-        try {
-            localStorage.setItem('lastSelectedProject', JSON.stringify(projectData));
-            await this.saveAppState('lastSelectedProject', projectData);
-            console.log('Ultimo progetto selezionato salvato in localStorage e IndexedDB:', projectData);
+                });
+            });
         } catch (error) {
-            console.error('Errore durante il salvataggio dell\'ultimo progetto selezionato:', error);
+            console.error(`DatabaseService: Errore durante l'aggiornamento del task ${id}:`, error);
             throw error;
         }
     }
 
     /**
-     * Recupera l'ultimo progetto selezionato da IndexedDB o localStorage
-     * @returns {Promise<Object|null>} Promise che si risolve con i dati del progetto
+     * Elimina un task
+     * @param {number|string} id - ID del task
+     * @returns {Promise<void>}
+     */
+    async deleteTask(id) {
+        return new Promise((resolve, reject) => {
+            this.dbTransaction('tasks', 'readwrite', (store, _, reject) => {
+                const request = store.delete(Number(id));
+
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject(event.target.error);
+            });
+        });
+    }
+
+    /**
+     * Aggiorna lo stato di completamento di un task
+     * @param {number|string} id - ID del task
+     * @param {boolean} completed - Stato di completamento
+     * @returns {Promise<Object>} - Task aggiornato
+     */
+    async toggleTaskCompletion(id, completed) {
+        return this.updateTask(id, { completed });
+    }
+
+    /**
+     * Aggiorna la priorità di un task
+     * @param {number|string} id - ID del task
+     * @param {string} priority - Priorità ('urgent', 'medium', 'normal')
+     * @returns {Promise<Object>} - Task aggiornato
+     */
+    async updateTaskPriority(id, priority) {
+        return this.updateTask(id, { priority });
+    }
+
+    /**
+     * Aggiorna la posizione di un task
+     * @param {number|string} id - ID del task
+     * @param {number} position - Nuova posizione
+     * @returns {Promise<Object>} - Task aggiornato
+     */
+    async updateTaskPosition(id, position) {
+        return this.updateTask(id, { position });
+    }
+
+    /**
+     * Ripristina lo stato dei task giornalieri
+     * @returns {Promise<void>}
+     */
+    async resetDailyTasks() {
+        const allTasks = await this.getAllTasks();
+        const dailyTasks = allTasks.filter(task => task.is_daily);
+
+        for (const task of dailyTasks) {
+            // Ripristina solo se è completato
+            if (task.completed) {
+                await this.updateTask(task.id, {
+                    completed: false,
+                    completed_at: null
+                });
+            }
+        }
+    }
+
+    // =====================================================================
+    // STATO DELL'APP
+    // =====================================================================
+
+    /**
+     * Ottiene un valore dallo stato dell'app
+     * @param {string} key - Chiave dello stato
+     * @returns {Promise<Object>} - Valore dello stato
+     */
+    async getAppState(key) {
+        return new Promise((resolve, reject) => {
+            this.dbTransaction('appState', 'readonly', (store, _, reject) => {
+                const request = store.get(key);
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        });
+    }
+
+    /**
+     * Salva un valore nello stato dell'app
+     * @param {string} key - Chiave dello stato
+     * @param {any} value - Valore da salvare
+     * @returns {Promise<void>}
+     */
+    async saveAppState(key, value) {
+        return new Promise((resolve, reject) => {
+            this.dbTransaction('appState', 'readwrite', (store, _, reject) => {
+                const request = store.put({ key, value });
+
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject(event.target.error);
+            });
+        });
+    }
+
+    /**
+     * Elimina un valore dallo stato dell'app
+     * @param {string} key - Chiave dello stato da eliminare
+     * @returns {Promise<void>}
+     */
+    async deleteAppState(key) {
+        return new Promise((resolve, reject) => {
+            this.dbTransaction('appState', 'readwrite', (store, _, reject) => {
+                const request = store.delete(key);
+
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject(event.target.error);
+            });
+        });
+    }
+
+    /**
+     * Salva l'ultimo progetto selezionato
+     * @param {Object} projectData - Dati del progetto
+     * @returns {Promise<void>}
+     */
+    async saveLastSelectedProject(projectData) {
+        return this.saveAppState('lastSelectedProject', projectData);
+    }
+
+    /**
+     * Ottiene l'ultimo progetto selezionato
+     * @returns {Promise<Object>} - Ultimo progetto selezionato
      */
     async getLastSelectedProject() {
-        try {
-            // Prima prova da localStorage per velocità
-            const localData = localStorage.getItem('lastSelectedProject');
-            if (localData) {
-                try {
-                    const parsedData = JSON.parse(localData);
-                    console.log('Ultimo progetto selezionato recuperato da localStorage:', parsedData);
-                    return parsedData;
-                } catch (e) {
-                    console.warn('Errore nel parsing dei dati in localStorage:', e);
-                }
-            }
-
-            // Se non c'è nulla in localStorage o c'è un errore, prova da IndexedDB
-            const dbData = await this.getAppState('lastSelectedProject');
-            console.log('Ultimo progetto selezionato recuperato da IndexedDB:', dbData);
-
-            // Se c'è un dato valido in IndexedDB, sincronizzalo con localStorage
-            if (dbData) {
-                localStorage.setItem('lastSelectedProject', JSON.stringify(dbData));
-            }
-
-            return dbData;
-        } catch (error) {
-            console.error('Errore durante il recupero dell\'ultimo progetto selezionato:', error);
-            return null;
-        }
+        const data = await this.getAppState('lastSelectedProject');
+        return data ? data.value : null;
     }
 }
 
-// Crea l'istanza del servizio
+// Esporta un'istanza singleton del servizio
 const databaseService = new DatabaseService();
-
-// Esporta il servizio per l'uso in altri moduli
 export default databaseService; 

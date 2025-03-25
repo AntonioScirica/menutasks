@@ -193,77 +193,85 @@ function addEventListeners() {
 
     // Gestione progetti
     const projectsTrigger = document.querySelector('.projects-trigger');
-    if (projectsTrigger) {
-        console.log('Menu progetti: Inizializzazione...', { trigger: projectsTrigger });
+    const projectsContent = document.querySelector('.projects-content');
+    let currentProjectName = document.querySelector('.current-project-name');
 
-        // Rimuovi eventuali listener precedenti
-        const newProjectsTrigger = projectsTrigger.cloneNode(true);
-        projectsTrigger.parentNode.replaceChild(newProjectsTrigger, projectsTrigger);
-        console.log('Menu progetti: Event listener rimossi e trigger clonato');
+    if (projectsTrigger && projectsContent) {
+        console.log('DEBUG: Menu progetti inizializzato');
 
-        // Assicurati che il menu progetti sia inizialmente chiuso
-        const projectsContent = document.querySelector('.projects-content');
-        if (projectsContent) {
-            projectsContent.classList.remove('visible');
-            projectsContent.classList.remove('active');
-            console.log('Menu progetti: Stato iniziale impostato (menu chiuso)');
-        } else {
-            console.error('Menu progetti: Elemento .projects-content non trovato nel DOM!');
-        }
+        // Invece di clonare e sostituire, rimuoviamo semplicemente i vecchi listener
+        projectsTrigger.removeEventListener('click', handleProjectsTriggerClick);
 
-        // Aggiungi l'event listener con debug
-        newProjectsTrigger.addEventListener('click', function (event) {
-            event.stopPropagation();
-            console.log('Menu progetti: Click sul trigger rilevato');
+        // Definiamo la funzione di gestione del click esternamente per poterla rimuovere
+        function handleProjectsTriggerClick(e) {
+            e.preventDefault();
+            e.stopPropagation();
 
-            const projectsContent = document.querySelector('.projects-content');
-            if (projectsContent) {
-                const wasActive = projectsContent.classList.contains('active');
-                projectsContent.classList.toggle('active');
+            console.log('DEBUG: Click sul trigger dei progetti');
+            console.log('DEBUG: Stato attuale del menu:', projectsContent.classList.contains('active') ? 'aperto' : 'chiuso');
 
-                // Forza il aggiornamento dello stile per assicurarsi che il menu sia visibile
-                if (!wasActive) {
-                    // Se stiamo aprendo il menu, forza il ricalcolo dello stile
-                    projectsContent.style.display = 'block';
-                    // Aggiungi anche la classe visible come backup
-                    projectsContent.classList.add('visible');
-                    console.log('Menu progetti: Aperto con display e classe visibile forzati');
-                } else {
-                    console.log('Menu progetti: Chiuso');
-                }
+            // Toggle della classe active
+            projectsContent.classList.toggle('active');
+
+            // Aggiorna lo stato di visibilità
+            if (projectsContent.classList.contains('active')) {
+                console.log('DEBUG: Menu progetti aperto');
+                projectsContent.style.opacity = '1';
+                projectsContent.style.visibility = 'visible';
+                projectsContent.style.display = 'block';
             } else {
-                console.error('Menu progetti: Elemento .projects-content non trovato al click!');
+                console.log('DEBUG: Menu progetti chiuso');
+                projectsContent.style.opacity = '0';
+                // Non nascondiamo completamente il menu per evitare problemi con il display:none
+                projectsContent.style.visibility = 'hidden';
             }
-        });
-
-        // Chiudi il menu quando si clicca altrove con debug
-        document.addEventListener('click', function (event) {
-            const projectsContent = document.querySelector('.projects-content');
-            if (projectsContent && !event.target.closest('.projects-container')) {
-                if (projectsContent.classList.contains('active')) {
-                    console.log('Menu progetti: Chiusura per click esterno');
-                    projectsContent.classList.remove('active');
-                    projectsContent.classList.remove('visible');
-                }
-            }
-        });
-
-        // Aggiungi un secondo trigger per aprire il menu quando si fa doppio click sul nome del progetto
-        const currentProjectNameElem = document.getElementById('currentProjectName');
-        if (currentProjectNameElem) {
-            currentProjectNameElem.addEventListener('dblclick', function (event) {
-                event.stopPropagation();
-                console.log('Menu progetti: Doppio click sul nome del progetto');
-
-                const projectsContent = document.querySelector('.projects-content');
-                if (projectsContent) {
-                    projectsContent.classList.add('active');
-                    projectsContent.classList.add('visible');
-                    projectsContent.style.display = 'block';
-                    console.log('Menu progetti: Aperto da doppio click sul nome');
-                }
-            });
         }
+
+        // Aggiungiamo il listener
+        projectsTrigger.addEventListener('click', handleProjectsTriggerClick);
+
+        // Rimuoviamo il vecchio event listener per i click esterni
+        document.removeEventListener('click', handleDocumentClick);
+
+        // Definiamo la funzione per i click esterni
+        function handleDocumentClick(e) {
+            const isClickInsideMenu = projectsContent.contains(e.target);
+            const isClickOnTrigger = projectsTrigger.contains(e.target);
+
+            if (projectsContent.classList.contains('active') && !isClickInsideMenu && !isClickOnTrigger) {
+                console.log('DEBUG: Chiusura menu progetti da click esterno');
+                projectsContent.classList.remove('active');
+                projectsContent.style.opacity = '0';
+                projectsContent.style.visibility = 'hidden';
+            }
+        }
+
+        // Aggiungiamo un nuovo event listener per i click esterni
+        document.addEventListener('click', handleDocumentClick);
+
+        // Rimuoviamo il vecchio event listener per doppio click
+        if (currentProjectName) {
+            currentProjectName.removeEventListener('dblclick', handleProjectNameDblClick);
+
+            // Definiamo la funzione per il doppio click
+            function handleProjectNameDblClick(e) {
+                console.log('DEBUG: Doppio click sul nome del progetto');
+                projectsContent.classList.add('active');
+                projectsContent.style.opacity = '1';
+                projectsContent.style.visibility = 'visible';
+                projectsContent.style.display = 'block';
+            }
+
+            // Aggiungiamo il listener per il doppio click
+            currentProjectName.addEventListener('dblclick', handleProjectNameDblClick);
+        }
+
+        // Forza il ripristino dello stato di visibilità all'inizio
+        projectsContent.classList.remove('active');
+        projectsContent.style.opacity = '0';
+        projectsContent.style.visibility = 'hidden';
+    } else {
+        console.error('ERROR: Impossibile trovare gli elementi del menu progetti');
     }
 
     // Altri gestori di eventi

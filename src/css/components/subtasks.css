@@ -1,14 +1,14 @@
 /* Subtasks */
 .subtask {
-    margin-left: var(--spacing-sm);
+    margin-left: 8px;
     position: relative;
     margin-top: 0;
-    width: calc(100% - var(--spacing-sm));
-    max-width: calc(100% - var(--spacing-sm));
+    width: calc(100% - 8px);
+    max-width: calc(100% - 8px);
     box-sizing: border-box;
-    background-color: var(--color-surface-lighter);
-    border: 1px solid var(--color-border);
-    border-radius: var(--border-radius-md);
+    background-color: #27272A;
+    border: 1px solid #393939;
+    border-radius: 5px;
 }
 
 /* Rimuovo tutti i gambetti delle subtask individuali */
@@ -23,7 +23,7 @@
 /* Container delle subtask */
 .subtasks-container {
     overflow: hidden;
-    transition: max-height var(--transition-normal);
+    transition: max-height 0.3s ease;
     width: 100%;
     box-sizing: border-box;
     position: relative;
@@ -38,7 +38,7 @@
     top: 0;
     bottom: 0;
     width: 1px;
-    background-color: var(--color-border);
+    background-color: #393939;
     z-index: 1;
 }
 
@@ -54,9 +54,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-text);
+    color: #fff;
     font-size: 16px;
-    transition: transform var(--transition-normal);
+    transition: transform 0.3s ease;
     order: -1;
     display: none !important;
 }
@@ -67,15 +67,15 @@
 
 /* Indicatori di priorità nelle subtask */
 .subtask.priority-urgent {
-    border-left: 3px solid var(--color-danger);
+    border-left: 3px solid #ff3b30;
 }
 
 .subtask.priority-medium {
-    border-left: 3px solid var(--color-warning);
+    border-left: 3px solid #ffcc00;
 }
 
 .subtask.priority-normal {
-    border-left: 3px solid var(--color-success);
+    border-left: 3px solid #34c759;
 }
 
 /* Area di input per le subtask */
@@ -93,10 +93,10 @@
 .subtask-input {
     flex-grow: 1;
     padding: 5px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--border-radius-sm);
-    background-color: var(--color-surface);
-    color: var(--color-text);
+    border: 1px solid #393939;
+    border-radius: 4px;
+    background-color: #18181A;
+    color: #fff;
     font-size: 14px;
 }
 

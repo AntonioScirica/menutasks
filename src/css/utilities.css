@@ -1,0 +1,195 @@
+/* Stili per icone e utilità */
+
+/* Stili per le icone */
+.delete-icon,
+.edit-icon {
+    background: none !important;
+    border: none !important;
+    color: #555 !important;
+    cursor: pointer;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0 !important;
+    transition: opacity 0.2s ease;
+}
+
+/* Mostra le icone quando si passa sopra la task */
+.task-item:hover .delete-icon,
+.task-item:hover .edit-icon {
+    opacity: 0.6 !important;
+}
+
+/* Cambia colore quando si passa sopra le icone */
+.delete-icon:hover,
+.edit-icon:hover {
+    opacity: 1 !important;
+    color: #fff !important;
+}
+
+/* Regola specifica per le icone che sovrascrive altre regole */
+button.delete-icon,
+button.edit-icon,
+button.delete-icon:hover,
+button.edit-icon:hover,
+button.delete-icon:active,
+button.edit-icon:active,
+button.delete-icon:focus,
+button.edit-icon:focus {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+/* Regola per tutti i button, ma con eccezione per delete-icon */
+button:not(.delete-icon):hover {
+    background-color: #27272A;
+}
+
+button:active {
+    background-color: #27272A;
+}
+
+/* Button add task */
+button {
+    background-color: #C95D4B;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0; /* Impedisce al pulsante di ridursi */
+}
+
+button svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0; /* Impedisce all'icona di ridursi */
+}
+
+/* Nascondi entrambi i pulsanti di testo originali */
+.action-button.edit-button,
+.action-button.delete-button {
+    display: none;
+}
+
+/* Aggiungo regola specifica per il pulsante di invio task */
+#addTaskButton {
+    background-color: #C95D4B !important;
+    color: white !important;
+}
+
+#addTaskButton:hover {
+    background-color: #C95D4B !important;
+    color: white !important;
+}
+
+#addTaskButton:active {
+    background-color: #C95D4B !important;
+    color: white !important;
+}
+
+/* Migliora lo stile delle icone */
+.delete-icon i,
+.edit-icon i {
+    width: 16px; /* Più piccolo */
+    height: 16px; /* Più piccolo */
+    stroke-width: 1.5;
+}
+
+/* Rendo piccole solo le icone nella barra laterale, escluse quelle nei menu */
+.bar [data-lucide] {
+    stroke-width: 1 !important;
+}
+
+/* Ripristina la dimensione normale per le icone nei menu dei progetti */
+.menu-button [data-lucide],
+.add-project-menu-button [data-lucide] {
+    stroke-width: 1.5 !important;
+}
+
+/* Le icone nella sezione info in particolare */
+.info-container [data-lucide] {
+    stroke-width: 1 !important;
+}
+
+/* Dimensioni specifiche per ogni tipo di icona */
+.icon-plus {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-check-circle {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-alarm-clock-check {
+    width: 18px !important;
+    height: 18px !important;
+}
+
+.icon-flame {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-alert-circle {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-circle {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-x {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-arrow-up {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-more-vertical {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.icon-edit {
+    width: 14px !important;
+    height: 14px !important;
+}
+
+.icon-trash {
+    width: 14px !important;
+    height: 14px !important;
+}
+
+.icon-plus-circle {
+    width: 14px !important;
+    height: 14px !important;
+}
+
+.icon-edit-2 {
+    width: 14px !important;
+    height: 14px !important;
+}
+
+.icon-check {
+    width: 16px !important;
+    height: 16px !important;
+} 

@@ -1,1 +1,19 @@
+/* Importa variabili globali */
+@import 'variables.css';
 
+/* Importa stili base e layout */
+@import 'base.css';
+@import 'layout.css';
+
+/* Importa componenti */
+@import 'components/tasks.css';
+@import 'components/subtasks.css';
+@import 'components/projects.css';
+@import 'components/forms.css';
+@import 'components/popups.css';
+@import 'components/completed-tasks.css';
+@import 'components/task-settings-popup.css';
+
+/* Importa utilities e media queries */
+@import 'utilities.css';
+@import 'media-queries.css';

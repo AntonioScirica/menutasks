@@ -6,27 +6,27 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 15px;
-    background-color: var(--color-surface-lighter);
-    border: 1px solid var(--color-border);
-    border-radius: var(--border-radius-md);
-    margin: 10px var(--spacing-sm) 0 var(--spacing-sm);
+    background-color: #27272A;
+    border: 1px solid #393939;
+    border-radius: 5px;
+    margin: 10px 8px 0 8px;
     cursor: pointer;
 }
 
 .completed-tasks-title {
     display: flex;
     align-items: center;
-    gap: var(--spacing-sm);
+    gap: 8px;
     font-weight: 500;
-    color: var(--color-text);
+    color: #fff;
 }
 
 .completed-count {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--color-border);
-    color: var(--color-text);
+    background-color: #393939;
+    color: #fff;
     border-radius: 50%;
     min-width: 20px;
     height: 20px;
@@ -38,7 +38,7 @@
 .completed-tasks-list {
     display: none;
     margin: 0;
-    padding: var(--spacing-sm);
+    padding: 8px;
     flex-direction: column;
     background-color: transparent;
     max-height: 100%;
@@ -51,45 +51,95 @@
     background: none;
     border: none;
     cursor: pointer;
-    color: var(--color-text);
+    color: #fff;
 }
 
 .toggle-completed-button:hover {
-    color: var(--color-primary);
+    color: #C95D4B;
 }
 
-/* Nasconde la barra dello scroll */
+/* Hide scrollbar for the completed tasks list but allow scrolling */
 .completed-tasks-list::-webkit-scrollbar {
     display: none;
 }
 
-/* Pulsante delle task completate */
+.completed-tasks-list {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* Stile per il pulsante delle task completate */
 .completed-tasks-button {
     display: flex;
     align-items: center;
-    gap: var(--spacing-sm);
+    gap: 8px;
     padding: 10px 15px;
     background-color: transparent;
     border: none;
     cursor: pointer;
-    color: var(--color-text);
+    color: #fff;
     width: 100%;
     justify-content: center;
-    margin-top: var(--spacing-sm);
+    margin-top: 8px;
     height: 56px;
     box-sizing: border-box;
 }
 
 .completed-tasks-button:hover {
-    background-color: var(--color-surface-lighter);
+    background-color: #27272A;
 }
 
 .completed-tasks-button.active {
-    background-color: var(--color-surface-lighter);
+    background-color: #27272A;
 }
 
 .completed-tasks-button i {
-    color: var(--color-primary);
+    color: #C95D4B;
+}
+
+/* Stile per l'intestazione delle task completate per data */
+.completed-date-header {
+    padding: 12px 8px;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    text-transform: capitalize;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #393939;
+}
+
+/* Stile per la prima intestazione di data */
+.completed-date-header:first-child {
+    margin-top: 0;
+}
+
+/* Stile per le task completate nella lista delle task completate */
+.completed-tasks-list .task-item.completed {
+    opacity: 0.8;
+    background-color: #27272A;
+}
+
+.completed-tasks-list .task-content {
+    justify-content: flex-start;
+}
+
+.completed-tasks-list .task-item:hover {
+    background-color: #2d2d30;
+}
+
+/* Nasconde i pulsanti di edit nelle task completate ma mantiene il pulsante delete */
+.completed-tasks-list .task-item .edit-icon {
+    display: none;
+}
+
+.completed-tasks-list .task-item .delete-icon {
+    opacity: 0;
+}
+
+.completed-tasks-list .task-item:hover .delete-icon {
+    opacity: 0.4;
 }
 
 /* Intestazione delle task completate per data */

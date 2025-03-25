@@ -1,20 +1,191 @@
-/* Task Item */
+/* Stili per la lista delle task */
+.task-list {
+    width: 100%;
+    background-color: transparent;
+    flex: 1;
+    padding: 8px;
+    box-sizing: border-box;
+    position: relative;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    min-height: 0;
+    margin-bottom: 20px;
+}
+
+/* Nasconde la barra dello scroll per Chrome, Safari e Opera */
+.task-list::-webkit-scrollbar {
+    display: none;
+}
+
+/* Singolo elemento task */
 .task-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 14px 10px;
     margin: 5px 0;
-    background-color: var(--color-surface-lighter);
-    border: 1px solid var(--color-border);
-    border-radius: var(--border-radius-md);
+    background-color: #27272A;
+    border: 1px solid #393939;
+    border-radius: 5px;
     cursor: move;
-    transition: background-color var(--transition-fast), box-shadow var(--transition-normal);
-    color: var(--color-text);
+    transition: background-color 0.2s, box-shadow 0.3s;
+    color: #fff;
 }
 
 .task-item:hover {
-    background-color: var(--color-surface-highlight);
+    background-color: #323235;
+}
+
+/* Il task content ora dispone gli elementi in modo diverso */
+.task-content {
+    display: flex;
+    align-items: center;
+    flex-grow: 1;
+    justify-content: flex-start;
+}
+
+/* La task-text è posizionata all'inizio */
+.task-text {
+    flex: 1;
+    margin-right: 0px;
+    margin-left: 0px;
+    padding-left: 0px;
+    color: #fff;
+    order: 1; /* Al centro */
+    max-width: 200px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    text-align: left;
+}
+
+/* Cerchio a sinistra */
+.task-circle {
+    background: none;
+    border: none;
+    cursor: default;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    margin-right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 16px;
+    order: 0; /* All'inizio */
+}
+
+/* Migliora lo stile del cerchio */
+.task-circle i {
+    width: 14px; /* Più piccolo */
+    height: 14px; /* Più piccolo */
+    color: #393939;
+    stroke-width: 1.5;
+}
+
+/* Toggle a destra (ora nascosto) */
+.task-item .toggle-subtask {
+    order: 2; /* Alla fine */
+    margin-left: auto;
+    margin-right: 0;
+    color: #fff;
+    display: none !important; /* Nascosto temporaneamente */
+}
+
+/* Task actions più compatto e ben allineato */
+.task-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    position: relative;
+}
+
+/* Stile per le task completate */
+.task-item.completed {
+    opacity: 0.7;
+}
+
+.task-item.completed .task-text {
+    text-decoration: line-through;
+    color: #888;
+}
+
+/* Stile per l'area di drop quando si trascina una subtask */
+.task-area-highlight {
+    background-color: rgba(255, 153, 0, 0.1);
+    border: 2px dashed rgba(255, 153, 0, 0.5);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+/* Indicatori visuali di priorità nelle task */
+.task-item.priority-urgent {
+    border-left: 3px solid #ff3b30;
+}
+
+.task-item.priority-medium {
+    border-left: 3px solid #ffcc00;
+}
+
+.task-item.priority-normal {
+    border-left: 3px solid #34c759;
+}
+
+/* Task container */
+.task-container {
+    margin-bottom: 0;
+}
+
+.task-container.has-subtasks {
+    margin-bottom: 0;
+}
+
+.task-container.collapsed .subtasks-container {
+    display: none;
+}
+
+/* Stile per il contatore di subtask nelle task chiuse */
+.subtask-counter {
+    position: absolute;
+    right: 12px; /* Esattamente 8px dal bordo destro */
+    top: 50%;
+    transform: translateY(-50%);
+    color: #C95D4B;
+    font-size: 14px;
+    font-weight: bold;
+    display: none;
+    z-index: 5;
+    background-color: transparent;
+    border-radius: 0;
+    height: auto;
+    min-width: auto;
+    padding: 0;
+}
+
+/* Mostro il contatore solo quando la task è chiusa */
+.task-container.has-subtasks.collapsed .subtask-counter {
+    display: block;
+}
+
+/* Modifico lo spazio per le icone quando il contatore è visibile */
+.task-container.has-subtasks.collapsed .task-actions {
+    margin-right: 20px; /* Spazio tra le icone e il contatore */
+}
+
+/* Mantiene il cursore pointer per le task con subtask */
+.task-container.has-subtasks > .task-item .task-content {
+    cursor: pointer;
+}
+
+/* Stile per l'ora di completamento */
+.task-completion-time {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-left: 8px;
+    flex-shrink: 0;
 }
 
 /* Stile per gli elementi task durante il trascinamento */
@@ -32,86 +203,6 @@
     z-index: 1000;
     background-color: var(--color-surface-lighter) !important; /* colore forzato */
     border-color: var(--color-border) !important; /* bordo neutro */
-}
-
-/* Task Content */
-.task-content {
-    display: flex;
-    align-items: center;
-    flex-grow: 1;
-    justify-content: flex-start;
-}
-
-.task-text {
-    flex: 1;
-    margin-right: 0;
-    margin-left: 0;
-    padding-left: 0;
-    color: var(--color-text);
-    order: 1; /* Al centro */
-    max-width: 200px;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    text-align: left;
-}
-
-/* Cerchio a sinistra della task */
-.task-circle {
-    background: none;
-    border: none;
-    cursor: default;
-    width: 20px;
-    height: 20px;
-    padding: 0;
-    margin-right: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-text);
-    font-size: 16px;
-    order: 0;
-}
-
-.task-circle i {
-    width: 14px;
-    height: 14px;
-    color: var(--color-border);
-    stroke-width: 1.5;
-}
-
-/* Task Actions */
-.task-actions {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    position: relative;
-}
-
-/* Icone di azione (modifica, elimina) */
-.delete-icon,
-.edit-icon {
-    background: none !important;
-    border: none !important;
-    color: #555 !important;
-    cursor: pointer;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0 !important;
-    transition: opacity var(--transition-fast);
-}
-
-.task-item:hover .delete-icon,
-.task-item:hover .edit-icon {
-    opacity: 0.6 !important;
-}
-
-.delete-icon:hover,
-.edit-icon:hover {
-    opacity: 1 !important;
-    color: var(--color-text) !important;
 }
 
 /* Regola specifica per le icone che sovrascrive altre regole */
@@ -138,72 +229,6 @@ button.edit-icon:focus {
     stroke-width: 1.5;
 }
 
-/* Indicatori di priorità nelle task */
-.task-item.priority-urgent {
-    border-left: 3px solid var(--color-danger);
-}
-
-.task-item.priority-medium {
-    border-left: 3px solid var(--color-warning);
-}
-
-.task-item.priority-normal {
-    border-left: 3px solid var(--color-success);
-}
-
-/* Task completate */
-.task-item.completed {
-    opacity: 0.7;
-}
-
-.task-item.completed .task-text {
-    text-decoration: line-through;
-    color: var(--color-text-disabled);
-}
-
-/* Task container */
-.task-container {
-    margin-bottom: 0;
-}
-
-.task-container.has-subtasks {
-    margin-bottom: 0;
-}
-
-/* Contatore subtask */
-.subtask-counter {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--color-primary);
-    font-size: 14px;
-    font-weight: bold;
-    display: none;
-    z-index: 5;
-    background-color: transparent;
-    border-radius: 0;
-    height: auto;
-    min-width: auto;
-    padding: 0;
-}
-
-.task-container.has-subtasks.collapsed .subtask-counter {
-    display: block;
-}
-
-.task-container.has-subtasks.collapsed .task-actions {
-    margin-right: 20px;
-}
-
-/* Ora di completamento */
-.task-completion-time {
-    font-size: 12px;
-    color: var(--color-text-dim);
-    margin-left: 8px;
-    flex-shrink: 0;
-}
-
 /* Stile per le task sopra cui passa il drag */
 .drag-over {
     /* Colore neutro invece dell'arancione */
@@ -216,4 +241,29 @@ button.edit-icon:focus {
     background-color: var(--color-surface-highlight) !important;
     border-color: var(--color-border) !important;
     box-shadow: 0 0 5px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Stile per l'indicatore di task giornaliera */
+.daily-indicator {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.6;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.task-item.is-daily {
+    position: relative;
+}
+
+.task-item.is-daily .task-actions {
+    right: 35px; /* Sposta i pulsanti per far spazio all'indicatore */
+}
+
+.task-item.completed .daily-indicator {
+    opacity: 0.3;
 } 

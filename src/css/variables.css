@@ -1,54 +1,50 @@
+/* Variabili globali di colore e stile */
 :root {
-  /* Colori principali */
-  --color-background: #09090B;
-  --color-surface: #18181A;
-  --color-surface-lighter: #27272A;
-  --color-surface-highlight: #323235;
-  --color-border: #393939;
-  --color-border-light: #27272A;
-  
-  /* Testi */
-  --color-text: #fff;
-  --color-text-dim: rgba(255, 255, 255, 0.5);
-  --color-text-dimmer: rgba(255, 255, 255, 0.1);
-  --color-text-disabled: #888;
-  
-  /* Colori di accento */
-  --color-primary: #C95D4B;
-  --color-primary-hover: #d06e5c;
-  
-  /* Colori di stato */
-  --color-danger: #ff3b30;
-  --color-danger-hover: #ff453a;
-  --color-warning: #ffcc00;
-  --color-success: #34c759;
-  
-  /* Spaziature */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 12px;
-  --spacing-lg: 16px;
-  --spacing-xl: 24px;
-  
-  /* Dimensioni */
-  --input-height: 40px;
-  --button-height: 40px;
-  --container-height: 56px;
-  
-  /* Effetti */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 4px 15px rgba(0, 0, 0, 0.05);
-  
-  /* Transizioni */
-  --transition-fast: 0.2s ease;
-  --transition-normal: 0.3s ease;
-  
-  /* Bordi */
-  --border-radius-sm: 4px;
-  --border-radius-md: 5px;
-  --border-radius-lg: 8px;
-  
-  /* Colore di sfondo del menu progetti */
-  --projects-menu-bg: #f5f5f5;
+    /* Colori principali */
+    --color-background: #09090B;
+    --color-surface: #18181A;
+    --color-surface-lighter: #27272A;
+    --color-surface-highlight: #323235;
+    --color-primary: #C95D4B;
+    --color-primary-hover: #d06e5c;
+    
+    /* Colori testo */
+    --color-text: #fff;
+    --color-text-dim: rgba(255, 255, 255, 0.5);
+    --color-text-dimmer: rgba(255, 255, 255, 0.1);
+    --color-text-disabled: #888;
+    
+    /* Colori bordi */
+    --color-border: #393939;
+    --color-border-light: #27272A;
+    
+    /* Colori stato */
+    --color-success: #34c759;
+    --color-warning: #ffcc00;
+    --color-danger: #ff3b30;
+    --color-danger-hover: #ff453a;
+    
+    /* Spaziature */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 24px;
+    
+    /* Border radius */
+    --border-radius-sm: 4px;
+    --border-radius-md: 5px;
+    --border-radius-lg: 8px;
+    
+    /* Transizioni */
+    --transition-fast: 0.2s ease;
+    --transition-normal: 0.3s ease;
+    
+    /* Ombre */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 4px 15px rgba(0, 0, 0, 0.05);
+    
+    /* Colori specifici per componenti */
+    --projects-menu-bg: #09090B;
 } 

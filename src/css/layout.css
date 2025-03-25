@@ -1,10 +1,10 @@
-/* Layout principale */
+/* Layout principale dell'applicazione */
 .container {
     display: flex;
     align-items: stretch;
     width: 100%;
     border-radius: 0;
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
     box-sizing: border-box;
     padding: 0;
     height: 100vh;
@@ -13,8 +13,8 @@
 /* Barra laterale */
 .bar {
     width: 50%;
-    background-color: var(--color-surface);
-    border-right: 1px solid var(--color-border);
+    background-color: #18181A;
+    border-right: 1px solid #393939;
     margin: 0;
     height: 100vh;
     display: flex;
@@ -33,12 +33,12 @@
 
 /* Contenitore principale delle task */
 .tasks_container {
-    width: calc(100% - var(--spacing-lg));
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
-    margin: var(--spacing-sm);
+    width: calc(100% - 16px);
+    background-color: #18181A;
+    border: 1px solid #393939;
+    margin: 8px;
     margin-bottom: 2px;
-    border-radius: var(--border-radius-lg);
+    border-radius: 8px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -47,7 +47,6 @@
     height: calc(100vh - 80px);
 }
 
-/* Effetto sfumato alla fine della lista tasks */
 .tasks_container:after {
     content: '';
     position: absolute;
@@ -55,10 +54,67 @@
     left: 0;
     right: 0;
     height: 50px;
-    background: linear-gradient(to bottom, rgba(24, 24, 26, 0), var(--color-surface) 60%);
+    background: linear-gradient(to bottom, rgba(24, 24, 26, 0), #18181A 60%);
     pointer-events: none;
-    border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg);
-    z-index: 10;
+    border-radius: 0 0 8px 8px;
+    z-index: 1;
+}
+
+/* Stili per il contenitore informativo nella barra laterale */
+.info-container {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 8px 0 8px;
+    color: #fff;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Stile per le singole righe informative */
+.info-item {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    margin: 2px 0;
+    gap: 10px;
+    font-size: 13px;
+    border-radius: 8px;
+}
+
+/* Stile per le icone */
+.info-item i {
+    width: 5px;
+    height: 5px;
+    color: #fff;
+}
+
+/* Stile per i valori numerici */
+.info-value {
+    margin-left: auto;
+    color: #C95D4B;
+    font-weight: 500;
+}
+
+/* Stile per il bottone Completed */
+.completed-button {
+    cursor: pointer;
+}
+
+.completed-button.active {
+    background-color: #323235;
+}
+
+/* Colori specifici per le icone di priorità */
+.urgent-icon {
+    color: #ff3b30 !important;
+}
+
+.medium-icon {
+    color: #ffcc00 !important;
+}
+
+.basic-icon {
+    color: #34c759 !important;
 }
 
 /* Gruppo input e pulsante */

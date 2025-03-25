@@ -4,27 +4,27 @@
 .task-input {
     width: 100%;
     padding: 10px;
-    border-radius: var(--border-radius-sm);
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background-color: #18181A;
+    border: 1px solid #393939;
     font-size: 16px;
     box-sizing: border-box;
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-    color: var(--color-text);
+    color: #fff;
     position: relative;
     padding-right: 35px; /* Spazio per l'icona plus a destra */
 }
 
 .task-input:focus {
     outline: none;
-    border-color: var(--color-primary);
+    border-color: #C95D4B;
     box-shadow: 0 0 0 2px rgba(201, 93, 75, 0.2);
 }
 
 .task-input::placeholder {
-    color: var(--color-text-dimmer);
+    color: rgba(255, 255, 255, 0.1);
 }
 
 /* Container input con priorità */
@@ -42,26 +42,27 @@
     transform: translateY(-50%);
     width: 2px;
     height: 20px;
-    background-color: var(--color-border);
-    display: none; /* Nascosto di default */
+    background-color: #393939;
+    display: none;
     z-index: 5;
     border-radius: 24px;
 }
 
 /* Stili per la linea divisoria in base alla priorità */
 .task-input-container.priority-urgent .task-input-divider {
-    background-color: var(--color-danger);
+    background-color: #ff3b30;
 }
 
 .task-input-container.priority-medium .task-input-divider {
-    background-color: var(--color-warning);
+    background-color: #ffcc00;
 }
 
+/* Rimuovo lo stile per la priorità normale, così rimane grigia */
 .task-input-container.priority-normal .task-input-divider {
-    background-color: var(--color-border);
+    background-color: #393939;
 }
 
-/* Mostro la linea divisoria SOLO quando c'è testo nell'input */
+/* Mostro la linea divisoria solo quando c'è testo nell'input */
 .task-input-container.has-text .task-input-divider {
     display: block;
 }
@@ -74,15 +75,17 @@
     transform: translateY(-50%);
     width: 20px;
     height: 20px;
-    display: none; /* Nascosto di default */
+    display: none;
     align-items: center;
     justify-content: center;
-    color: var(--color-text-dim);
+    color: rgba(255, 255, 255, 0.5);
     z-index: 5;
+    cursor: pointer;
 }
 
-/* Mostro icona SOLO quando c'è testo nell'input */
-.task-input-container.has-text .task-input-plus-icon {
+/* Mostro icona e divider solo quando c'è testo nell'input */
+.task-input-container.has-text .task-input-plus-icon,
+.task-input-container.has-text .task-input-divider {
     display: flex;
 }
 
@@ -140,16 +143,16 @@ button:active {
     position: absolute;
     align-items: center;
     justify-content: center;
-    background-color: var(--color-surface-lighter);
-    border-radius: var(--border-radius-lg);
+    background-color: #27272A;
+    border-radius: 8px;
     padding: 8px 12px;
     gap: 12px;
     top: -45px;
     left: 50%;
     transform: translateX(calc(-50% - 8px));
     z-index: 200;
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--color-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    border: 1px solid #393939;
 }
 
 .priority-selector.visible {
@@ -161,22 +164,22 @@ button:active {
     height: 20px;
     border-radius: 16%;
     cursor: pointer;
-    transition: transform var(--transition-fast);
+    transition: transform 0.2s;
     opacity: 0.8;
     border: none;
     box-sizing: border-box;
 }
 
 .priority-option.priority-urgent {
-    background-color: var(--color-danger);
+    background-color: #ff3b30;
 }
 
 .priority-option.priority-medium {
-    background-color: var(--color-warning);
+    background-color: #ffcc00;
 }
 
 .priority-option.priority-normal {
-    background-color: var(--color-success);
+    background-color: #34c759;
 }
 
 .priority-option:hover {
@@ -218,4 +221,200 @@ button:active {
 
 .task-input-container.has-text .task-input-divider {
     display: block !important;
+}
+
+/* Gruppo input e pulsante */
+.input-group {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 8px 0px 8px; /* 8px dal fondo, 8px dai lati */
+    width: calc(100% - 16px);
+    gap: 8px;
+    box-sizing: border-box;
+    height: 56px;
+}
+
+.input-group input {
+    flex-grow: 1;
+}
+
+/* Stili per il selettore di priorità */
+.priority-selector {
+    display: none;
+    position: absolute;
+    align-items: center;
+    justify-content: center;
+    background-color: #27272A;
+    border-radius: 8px;
+    padding: 8px 12px;
+    gap: 12px;
+    top: -45px;
+    left: 50%;
+    transform: translateX(calc(-50% - 8px));
+    z-index: 200;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    border: 1px solid #393939;
+}
+
+.priority-selector.visible {
+    display: flex;
+}
+
+.priority-option {
+    width: 20px;
+    height: 20px;
+    border-radius: 16%;
+    cursor: pointer;
+    transition: transform 0.2s;
+    opacity: 0.8;
+    border: none;
+    box-sizing: border-box;
+}
+
+.priority-option.priority-urgent {
+    background-color: #ff3b30;
+}
+
+.priority-option.priority-medium {
+    background-color: #ffcc00;
+}
+
+.priority-option.priority-normal {
+    background-color: #34c759;
+}
+
+.priority-option:hover {
+    transform: scale(1.1);
+    opacity: 1;
+}
+
+.priority-option.selected {
+    opacity: 1;
+    border: 2px solid white;
+}
+
+/* Stili per i pulsanti di azione */
+.action-button {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background-color 0.2s;
+}
+
+.edit-button {
+    background-color: #C95D4B;
+    color: white;
+}
+
+.edit-button:hover {
+    background-color: #d06e5c;
+}
+
+.delete-button {
+    background-color: #393939;
+    color: white;
+}
+
+.delete-button:hover {
+    background-color: #4c4c4c;
+}
+
+.action-button:hover {
+    opacity: 0.9;
+}
+
+/* Project input */
+.project-input-group {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    margin-top: auto;
+    background-color: #18181A;
+    height: 56px;
+    box-sizing: border-box;
+    width: 100%;
+    margin-bottom: 1px;
+    position: relative;
+}
+
+.project-input-group::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: 0px;
+    right: 0px;
+    height: 1px;
+    background-color: #27272A;
+}
+
+.project-input-group.visible {
+    display: flex;
+}
+
+.project-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #393939;
+    border-radius: 4px;
+    background-color: #18181A;
+    color: #fff;
+    font-size: 16px;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    height: 40px;
+    width: calc(100% - 48px);
+    line-height: 20px;
+}
+
+.project-input:focus {
+    outline: none;
+    border-color: #C95D4B;
+    box-shadow: 0 0 0 2px rgba(201, 93, 75, 0.2);
+}
+
+.project-input::placeholder {
+    color: rgba(255, 255, 255, 0.1);
+}
+
+#confirmProjectButton {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background-color: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    border: 1px solid #393939;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+#confirmProjectButton:hover {
+    background-color: transparent;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+#confirmProjectButton:active {
+    background-color: transparent;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.project-edit-input {
+    width: 100%;
+    padding: 5px;
+    border: 1px solid #393939;
+    border-radius: 4px;
+    background-color: #18181A;
+    color: #fff;
+    font-size: inherit;
 } 

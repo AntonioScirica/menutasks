@@ -15,19 +15,19 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    color: var(--color-text);
+    color: #fff;
     height: 40px;
     box-sizing: border-box;
-    transition: background-color var(--transition-fast);
+    transition: background-color 0.2s;
 }
 
 .project-item:hover {
-    background-color: var(--color-surface-lighter);
+    background-color: #27272A;
 }
 
 .project-item.active {
-    background-color: var(--color-surface-lighter);
-    color: var(--color-text);
+    background-color: #27272A;
+    color: #fff;
 }
 
 .project-item:last-child {
@@ -43,7 +43,7 @@
 .menu-button {
     background: none;
     border: none;
-    color: var(--color-text);
+    color: #fff;
     padding: 5px;
     cursor: pointer;
     display: flex;
@@ -51,9 +51,9 @@
     justify-content: center;
     width: 30px;
     height: 30px;
-    border-radius: var(--border-radius-sm);
+    border-radius: 4px;
     opacity: 0;
-    transition: opacity var(--transition-fast);
+    transition: opacity 0.2s ease;
     position: relative;
 }
 
@@ -80,10 +80,10 @@
 /* Dropdown menu */
 .menu-dropdown {
     position: fixed;
-    background-color: var(--color-surface-lighter);
-    border: 1px solid var(--color-border);
-    border-radius: var(--border-radius-sm);
-    box-shadow: var(--shadow-sm);
+    background-color: #27272A;
+    border: 1px solid #393939;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     z-index: 1000;
     min-width: 150px;
     width: 100%;
@@ -100,8 +100,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--color-text);
-    transition: background-color var(--transition-fast);
+    color: #fff;
+    transition: background-color 0.2s;
 }
 
 .menu-option i {
@@ -114,7 +114,7 @@
 }
 
 .menu-option.delete {
-    color: var(--color-danger);
+    color: #ff3b30;
 }
 
 .menu-option.delete:hover {
@@ -141,10 +141,10 @@
 .projects-container {
     position: relative;
     width: 100%;
-    padding: var(--spacing-sm);
+    padding: 8px;
     box-sizing: border-box;
     display: none;
-    border-bottom: 1px solid var(--color-border-light);
+    border-bottom: 1px solid #27272A;
 }
 
 .projects-container.visible {
@@ -155,10 +155,10 @@
 .projects-trigger {
     width: 100%;
     padding: 10px;
-    background-color: var(--color-surface);
+    background-color: #18181A;
     border: none;
-    border-radius: var(--border-radius-sm);
-    color: var(--color-text);
+    border-radius: 4px;
+    color: #fff;
     font-size: 16px;
     cursor: pointer;
     display: flex;
@@ -166,12 +166,12 @@
     justify-content: space-between;
     height: 40px;
     box-sizing: border-box;
-    transition: background-color var(--transition-fast);
+    transition: background-color 0.2s;
 }
 
 .projects-trigger:hover,
 .projects-container:hover .projects-trigger {
-    background-color: var(--color-surface-lighter);
+    background-color: #27272A;
 }
 
 .projects-trigger span {
@@ -179,13 +179,13 @@
     text-align: left;
     margin-right: 8px;
     line-height: 20px;
-    color: var(--color-text);
+    color: #fff;
 }
 
 .projects-trigger i {
     width: 20px;
     height: 20px;
-    transition: transform var(--transition-fast);
+    transition: transform 0.2s;
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -194,33 +194,29 @@
 
 /* Contenuto dei progetti */
 .projects-content {
+    display: none;
     position: absolute;
+    top: 0;
+    left: 100%;
+    background-color: #09090B;
+    border: 1px solid #27272A;
+    border-radius: 4px;
+    margin-left: 8px;
     z-index: 1000;
-    top: 100%;
-    left: 0;
-    width: 16rem;
-    max-height: 0;
-    overflow: hidden;
-    background-color: var(--projects-menu-bg);
-    border-radius: 0 0 0.5rem 0.5rem;
-    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.2);
-    transition: max-height 0.3s ease-in-out, opacity 0.3s;
-    opacity: 0;
-    visibility: hidden;
+    box-shadow: none;
+    width: 200px;
+    max-height: calc(6 * 40px + 40px); /* Altezza di 6 progetti + altezza del label */
+    overflow-y: auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
 }
 
-/* Stili espliciti per il menu attivo */
-.projects-content.active,
-.projects-content.visible {
-    max-height: 20rem !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    display: block !important;
-    overflow-y: auto !important;
-    pointer-events: auto !important;
+/* Mostra il menu al passaggio del mouse */
+.projects-container:hover .projects-content {
+    display: block;
 }
 
-/* Area invisibile per mantenere l'hover */
+/* Aggiungo un'area invisibile per mantenere l'hover */
 .projects-container::after {
     content: '';
     position: absolute;
@@ -232,7 +228,7 @@
     z-index: 1001;
 }
 
-/* Nasconde la barra dello scroll */
+/* Nasconde la barra dello scroll per Chrome, Safari e Opera */
 .projects-content::-webkit-scrollbar {
     display: none;
 }
@@ -241,20 +237,20 @@
     content: 'projects';
     display: block;
     padding: 8px 12px;
-    color: var(--color-text-dim);
+    color: rgba(255, 255, 255, 0.5);
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 1px;
     position: sticky;
     top: 0;
-    background-color: var(--color-background);
+    background-color: #09090B;
     z-index: 1;
 }
 
 /* Dropdown progetti attivo */
 .projects-dropdown.active .projects-dropdown-button {
-    background-color: var(--color-surface-lighter);
-    color: var(--color-text);
+    background-color: #27272A;
+    color: #fff;
 }
 
 .projects-dropdown.active .projects-dropdown-button i {
@@ -277,7 +273,7 @@
     padding: 10px;
     background: none;
     border: none;
-    color: var(--color-text);
+    color: #fff;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -291,7 +287,7 @@
 }
 
 .add-project-menu-button:hover {
-    background-color: var(--color-surface-lighter);
+    background-color: #27272A;
 }
 
 /* Input per l'aggiunta di un nuovo progetto */
@@ -381,7 +377,7 @@
 .add-project-button {
     background: transparent !important;
     border: none;
-    color: var(--color-text);
+    color: #fff;
     padding: 0;
     cursor: pointer;
     display: flex;
@@ -396,10 +392,12 @@
     transform: translateY(-50%);
 }
 
+/* Rimuovo completamente l'effetto hover */
 .add-project-button:hover {
     background: transparent !important;
 }
 
+/* Rimuovo anche l'effetto attivo */
 .add-project-button:active {
     background: transparent !important;
 }

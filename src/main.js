@@ -1,8 +1,11 @@
-const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, powerSaveBlocker } = require('electron');
 const { menubar } = require('menubar');
 const path = require('path');
 require('electron-reload')(__dirname);
 require('dotenv').config();
+
+// Variabile per memorizzare l'ID del blocco di risparmio energetico
+let powerSaveBlockerId = null;
 
 // Gestisce il comportamento quando l'app è pronta
 if (process.platform === 'darwin') {
@@ -42,7 +45,8 @@ const mb = menubar({
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
-            nodeIntegration: false
+            nodeIntegration: false,
+            backgroundThrottling: false // Disattiva il throttling in background
         },
         // Nascondi la finestra inizialmente
         opacity: 0
@@ -64,6 +68,48 @@ mb.on('ready', () => {
             mb.showWindow();
         }
     });
+
+    // Attiva il blocco di risparmio energetico all'avvio per i timer
+    preventAppSuspension();
+});
+
+// Funzione per prevenire la sospensione dell'app
+function preventAppSuspension(reason = 'timer_active') {
+    if (powerSaveBlockerId === null) {
+        // Usa powerSaveBlocker.start per mantenere il sistema attivo
+        // 'prevent-app-suspension' impedisce che l'app vada in sospensione ma permette lo spegnimento dello schermo
+        powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+        console.log(`Blocco risparmio energetico attivato (ID: ${powerSaveBlockerId}). Motivo: ${reason}`);
+    } else {
+        console.log(`Blocco risparmio energetico già attivo (ID: ${powerSaveBlockerId})`);
+    }
+    return powerSaveBlockerId;
+}
+
+// Funzione per rimuovere il blocco di risparmio energetico
+function releaseAppSuspension() {
+    if (powerSaveBlockerId !== null) {
+        powerSaveBlocker.stop(powerSaveBlockerId);
+        console.log(`Blocco risparmio energetico rimosso (ID: ${powerSaveBlockerId})`);
+        powerSaveBlockerId = null;
+    }
+}
+
+// Gestisci richieste IPC dal renderer
+ipcMain.handle('preventAppSuspension', (event, reason) => {
+    return preventAppSuspension(reason);
+});
+
+ipcMain.handle('releaseAppSuspension', (event) => {
+    releaseAppSuspension();
+    return true;
+});
+
+ipcMain.handle('getAppSuspensionStatus', (event) => {
+    return {
+        active: powerSaveBlockerId !== null,
+        id: powerSaveBlockerId
+    };
 });
 
 // Intercetta l'evento prima che la finestra venga mostrata
@@ -135,7 +181,8 @@ app.on('window-all-closed', () => {
     }
 });
 
-// Rimuovi le shortcut quando l'app viene chiusa
+// Rimuovi le shortcut e il blocco risparmio energetico quando l'app viene chiusa
 app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    releaseAppSuspension();
 }); 

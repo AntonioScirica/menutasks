@@ -3148,6 +3148,33 @@
                 await initializeTimerDatabase();
                 console.log("Database dei timer inizializzato");
 
+                // Previeni la sospensione dell'app quando è in background (se supportato)
+                if (window.electronAPI && typeof window.electronAPI.preventAppSuspension === 'function') {
+                    window.electronAPI.preventAppSuspension('timer_active');
+                    console.log("Prevenzione sospensione app attivata per i timer");
+                } else {
+                    console.log("API preventAppSuspension non disponibile, usando fallback browser");
+                    // Richiedi un wakelock se il browser lo supporta
+                    if ('wakeLock' in navigator) {
+                        try {
+                            const wakeLock = await navigator.wakeLock.request('screen');
+                            console.log('Wake Lock attivato');
+
+                            // Rilascia il wakeLock quando il documento viene nascosto
+                            document.addEventListener('visibilitychange', async () => {
+                                if (document.visibilityState === 'visible' && !window.wakeLock) {
+                                    window.wakeLock = await navigator.wakeLock.request('screen');
+                                    console.log('Wake Lock riattivato');
+                                }
+                            });
+                        } catch (err) {
+                            console.log(`Wake Lock non disponibile: ${err.name}, ${err.message}`);
+                        }
+                    } else {
+                        console.log('Wake Lock API non supportata in questo browser');
+                    }
+                }
+
                 // Attendi un momento per essere sicuri che le task siano caricate
                 setTimeout(async () => {
                     await restoreTimersFromLocalStorage();
@@ -4124,27 +4151,39 @@
                 const taskTimer = {
                     taskId: taskId,
                     seconds: initialSeconds,
+                    startTimestamp: Date.now(), // Timestamp di inizio/ripresa timer
+                    lastUpdateTimestamp: Date.now(), // Ultimo timestamp in cui abbiamo aggiornato il conteggio
+                    isRunning: true,
                     interval: setInterval(() => {
-                        // Incrementa il timer ogni secondo
-                        taskTimer.seconds++;
+                        // Invece di incrementare semplicemente i secondi, calcola il tempo trascorso
+                        // dal timestamp iniziale o dall'ultimo aggiornamento
+                        const now = Date.now();
+                        const elapsedSeconds = Math.floor((now - taskTimer.lastUpdateTimestamp) / 1000);
 
-                        // Verifica ogni 30 secondi se è necessario salvare
-                        if (taskTimer.seconds % 30 === 0) {
-                            if (shouldSaveTimer(taskId, taskTimer.seconds)) {
-                                // Prima salva localmente
-                                saveTimerToLocalStorage(taskId, taskTimer.seconds)
-                                    .then(() => {
-                                        // Poi sincronizza con Supabase
-                                        return saveTimerToSupabase(taskId, taskTimer.seconds);
-                                    })
-                                    .then(() => {
-                                        updateSavedState(taskId, taskTimer.seconds);
-                                    })
-                                    .catch(err => {
-                                        console.error(`Errore salvando il timer per task ${taskId}:`, err);
-                                    });
-                            } else {
-                                console.log(`Saltato salvataggio per task ${taskId}: nessun cambiamento significativo`);
+                        // Se è passato almeno un secondo
+                        if (elapsedSeconds > 0) {
+                            // Aggiorna i secondi e il timestamp dell'ultimo aggiornamento
+                            taskTimer.seconds += elapsedSeconds;
+                            taskTimer.lastUpdateTimestamp = now;
+
+                            // Verifica ogni 30 secondi se è necessario salvare
+                            if (taskTimer.seconds % 30 === 0 || elapsedSeconds > 30) {
+                                if (shouldSaveTimer(taskId, taskTimer.seconds)) {
+                                    // Prima salva localmente
+                                    saveTimerToLocalStorage(taskId, taskTimer.seconds)
+                                        .then(() => {
+                                            // Poi sincronizza con Supabase
+                                            return saveTimerToSupabase(taskId, taskTimer.seconds);
+                                        })
+                                        .then(() => {
+                                            updateSavedState(taskId, taskTimer.seconds);
+                                        })
+                                        .catch(err => {
+                                            console.error(`Errore salvando il timer per task ${taskId}:`, err);
+                                        });
+                                } else {
+                                    console.log(`Saltato salvataggio per task ${taskId}: nessun cambiamento significativo`);
+                                }
                             }
                         }
                     }, 1000),
@@ -4387,6 +4426,13 @@
                     console.error("Errore nell'inizializzazione di IndexedDB:", err);
                 });
 
+            // Aggiungi gestore per gli eventi di visibilità del documento
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+
+            // Aggiungi gestori per focus/blur della finestra
+            window.addEventListener('focus', handleAppFocus);
+            window.addEventListener('blur', handleAppBlur);
+
             // Aggiungi gestore per beforeunload (chiusura app/browser)
             window.addEventListener('beforeunload', async function (event) {
                 console.log("App in chiusura, salvataggio timer...");
@@ -4398,6 +4444,9 @@
                 const savePromises = [];
 
                 activeTimers.forEach((timer, taskId) => {
+                    // Aggiorna i secondi prima di salvare
+                    updateTimerSecondsIfRunning(timer);
+
                     console.log(`Salvataggio timer per task ${taskId} prima della chiusura: ${timer.seconds} secondi`);
                     savePromises.push(
                         saveTimerToLocalStorage(taskId, timer.seconds)
@@ -4426,8 +4475,9 @@
                 const savedTimers = await getAllTimersFromLocalStorage();
                 console.log(`Trovati ${savedTimers.length} timer salvati`);
 
-                // Ripristina solo i timer per le task non completate
-                const activeTasks = await getActiveTasksFromSupabase();
+                // Recupera stato attuale da Supabase per sincronizzare i dati
+                const activeTasks = await getActiveTasksWithTimersFromSupabase();
+                console.log(`Recuperate ${activeTasks.length} task attive con timer da Supabase`);
 
                 // Crea una mappa delle task attive per facilitare la ricerca
                 const activeTaskMap = new Map();
@@ -4445,15 +4495,39 @@
 
                         // Se il timer è abilitato e la task non è completata
                         if (task.timer_enabled && !task.completed) {
-                            console.log(`Ripristino timer per task ${taskId}: ${timer.seconds} secondi`);
+                            // Determina quale valore di secondi usare (il maggiore tra locale e remoto)
+                            const localSeconds = timer.seconds || 0;
+                            const remoteSeconds = task.timer_seconds || 0;
+                            const secondsToUse = Math.max(localSeconds, remoteSeconds);
+
+                            console.log(`Ripristino timer per task ${taskId}: ${secondsToUse} secondi (locale: ${localSeconds}, remoto: ${remoteSeconds})`);
 
                             // Avvia il timer con i secondi salvati
-                            startTaskTimer(taskId, timer.seconds);
+                            startTaskTimer(taskId, secondsToUse);
+
+                            // Sincronizza con Supabase per assicurarsi che i dati siano aggiornati
+                            if (localSeconds !== remoteSeconds) {
+                                console.log(`Sincronizzazione valori timer per task ${taskId}`);
+                                await saveTimerToSupabase(taskId, secondsToUse);
+                            }
                         } else {
                             console.log(`Timer non ripristinato per task ${taskId}: timer disabilitato o task completata`);
                         }
                     } else {
                         console.log(`Timer non ripristinato per task ${taskId}: task non trovata o completata`);
+                    }
+                }
+
+                // Verifica se ci sono timer attivi su Supabase che non abbiamo nel database locale
+                for (const task of activeTasks) {
+                    if (task.timer_enabled && !task.completed && task.timer_seconds > 0) {
+                        const taskId = task.id;
+                        const isAlreadyRestored = savedTimers.some(timer => timer.taskId === taskId);
+
+                        if (!isAlreadyRestored) {
+                            console.log(`Ripristino timer solo da Supabase per task ${taskId}: ${task.timer_seconds} secondi`);
+                            startTaskTimer(taskId, task.timer_seconds);
+                        }
                     }
                 }
 
@@ -4463,12 +4537,12 @@
             }
         }
 
-        // Funzione per ottenere le task attive da Supabase
-        async function getActiveTasksFromSupabase() {
+        // Funzione per ottenere le task attive con timer da Supabase
+        async function getActiveTasksWithTimersFromSupabase() {
             try {
                 const { data, error } = await supabase
                     .from('tasks')
-                    .select('id, timer_enabled, completed')
+                    .select('id, timer_enabled, timer_seconds, completed')
                     .eq('completed', false);
 
                 if (error) throw error;
@@ -4833,6 +4907,89 @@
         }
 
         // ... existing code ...
+
+        // Gestore per cambiamenti di visibilità del documento
+        function handleVisibilityChange() {
+            console.log("Visibilità del documento cambiata: ", document.visibilityState);
+
+            if (document.visibilityState === 'visible') {
+                // Il documento è diventato visibile
+                console.log("Documento tornato visibile, sincronizzazione timer...");
+                synchronizeAllTimers();
+            } else if (document.visibilityState === 'hidden') {
+                // Il documento è stato nascosto
+                console.log("Documento nascosto, salvataggio stato timer...");
+                saveAllTimersState();
+            }
+        }
+
+        // Gestore per quando l'app ottiene il focus
+        function handleAppFocus() {
+            console.log("App tornata in primo piano, sincronizzazione timer...");
+            synchronizeAllTimers();
+        }
+
+        // Gestore per quando l'app perde il focus
+        function handleAppBlur() {
+            console.log("App in background, salvataggio stato timer...");
+            saveAllTimersState();
+        }
+
+        // Funzione per sincronizzare tutti i timer attivi
+        function synchronizeAllTimers() {
+            console.log(`Sincronizzazione di ${activeTimers.size} timer attivi...`);
+
+            activeTimers.forEach((timer, taskId) => {
+                // Aggiorna i secondi per ogni timer in esecuzione
+                updateTimerSecondsIfRunning(timer);
+
+                // Salva lo stato aggiornato
+                saveTimerToLocalStorage(taskId, timer.seconds)
+                    .then(() => {
+                        return saveTimerToSupabase(taskId, timer.seconds);
+                    })
+                    .then(() => {
+                        updateSavedState(taskId, timer.seconds);
+                        console.log(`Timer per task ${taskId} sincronizzato: ${timer.seconds} secondi`);
+                    })
+                    .catch(err => {
+                        console.error(`Errore durante la sincronizzazione del timer per task ${taskId}:`, err);
+                    });
+            });
+        }
+
+        // Funzione per salvare lo stato di tutti i timer
+        function saveAllTimersState() {
+            console.log(`Salvataggio stato di ${activeTimers.size} timer attivi...`);
+
+            activeTimers.forEach((timer, taskId) => {
+                // Aggiorna i secondi per ogni timer in esecuzione
+                updateTimerSecondsIfRunning(timer);
+
+                // Salva lo stato aggiornato
+                saveTimerToLocalStorage(taskId, timer.seconds)
+                    .then(() => {
+                        console.log(`Stato del timer per task ${taskId} salvato: ${timer.seconds} secondi`);
+                    })
+                    .catch(err => {
+                        console.error(`Errore nel salvataggio dello stato del timer per task ${taskId}:`, err);
+                    });
+            });
+        }
+
+        // Funzione per aggiornare i secondi di un timer in base al tempo trascorso
+        function updateTimerSecondsIfRunning(timer) {
+            if (timer && timer.isRunning) {
+                const now = Date.now();
+                const elapsedSeconds = Math.floor((now - timer.lastUpdateTimestamp) / 1000);
+
+                if (elapsedSeconds > 0) {
+                    timer.seconds += elapsedSeconds;
+                    timer.lastUpdateTimestamp = now;
+                    console.log(`Timer per task ${timer.taskId} aggiornato: +${elapsedSeconds}s, totale: ${timer.seconds}s`);
+                }
+            }
+        }
     </script>
 </body>
 

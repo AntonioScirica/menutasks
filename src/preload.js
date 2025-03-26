@@ -9,6 +9,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Funzione per gestire il focus sull'input
     onFocusInput: (callback) => {
         ipcRenderer.on('focus-input', callback);
+    },
+    // API per prevenire la sospensione dell'app
+    preventAppSuspension: (reason) => {
+        return ipcRenderer.invoke('preventAppSuspension', reason);
+    },
+    // API per rilasciare il blocco di sospensione dell'app
+    releaseAppSuspension: () => {
+        return ipcRenderer.invoke('releaseAppSuspension');
+    },
+    // API per ottenere lo stato corrente del blocco di sospensione
+    getAppSuspensionStatus: () => {
+        return ipcRenderer.invoke('getAppSuspensionStatus');
     }
 });
 

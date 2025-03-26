@@ -402,6 +402,7 @@
         let currentDay = new Date().getDate();
         let checkMidnightInterval;
         let intensiveCheckInterval;
+        let autoRefreshInterval; // Nuovo intervallo per il refresh automatico
 
         // Funzione per verificare se è passata mezzanotte mentre l'app è aperta
         function checkIfMidnightPassed() {
@@ -410,13 +411,20 @@
 
             // Se il giorno è cambiato, significa che è passata mezzanotte
             if (today !== currentDay) {
-                console.log('Mezzanotte passata! Riavvio automatico per aggiornare le task giornaliere...');
-                clearInterval(checkMidnightInterval); // Ferma il controllo per evitare più riavvii
-                if (intensiveCheckInterval) {
-                    clearInterval(intensiveCheckInterval);
-                }
-                location.reload(); // Riavvia completamente l'app
-                return; // Interrompiamo l'esecuzione qui, dato che la pagina verrà ricaricata
+                console.log('Mezzanotte passata! Aggiornamento task giornaliere...');
+
+                // Aggiorna la variabile del giorno attuale
+                currentDay = today;
+
+                // Forza un controllo delle task giornaliere
+                checkDailyTasksForReset(true).then(hasReset => {
+                    // Forza il ricaricamento delle task per aggiornare la UI
+                    console.log('Ricaricamento task dopo il reset di mezzanotte');
+                    loadTasks();
+                });
+
+                // Continua a controllare ogni minuto
+                return;
             }
 
             // Verifica se siamo nell'intervallo di controllo intensivo (11:58 PM - 00:01 AM)
@@ -428,13 +436,17 @@
 
             if (isNearMidnight && !intensiveCheckInterval) {
                 // Se siamo vicini a mezzanotte e non abbiamo già un controllo intensivo attivo
-                console.log('Avvio controllo intensivo vicino a mezzanotte (ogni 30 secondi)');
+                console.log('Avvio controllo intensivo vicino a mezzanotte (ogni 15 secondi)');
                 intensiveCheckInterval = setInterval(async function () {
                     console.log('Controllo intensivo task giornaliere...');
                     // Forza un controllo delle task giornaliere
                     const hasReset = await checkDailyTasksForReset(true);
                     if (hasReset) {
                         console.log('Task giornaliere resettate durante controllo intensivo');
+                        await loadTasks();
+                    } else {
+                        // Anche se non sono state resettate, forziamo comunque un aggiornamento UI
+                        console.log('Forzatura aggiornamento UI durante controllo intensivo');
                         await loadTasks();
                     }
 
@@ -447,7 +459,7 @@
                         clearInterval(intensiveCheckInterval);
                         intensiveCheckInterval = null;
                     }
-                }, 30000); // Controllo ogni 30 secondi
+                }, 15000); // Controllo ogni 15 secondi (più frequente)
             } else if (!isNearMidnight && intensiveCheckInterval) {
                 // Se non siamo più vicini a mezzanotte ma abbiamo ancora un controllo intensivo
                 console.log('Fine dell\'intervallo di controllo intensivo');
@@ -482,26 +494,55 @@
 
                 if (data && data.length > 0) {
                     console.log(`Trovate ${data.length} task giornaliere da resettare`);
+                    let taskUpdated = false;
+                    let updatedTaskIds = [];
 
                     // Resetta tutte le task giornaliere programmate
                     for (const task of data) {
-                        // Controlla se la task è già stata resettata oggi
-                        if (force || task.scheduled_for && new Date(task.scheduled_for) <= today) {
-                            await supabase
+                        // Controlla se la task è già stata resettata oggi o se è completata
+                        if (force || (task.scheduled_for && new Date(task.scheduled_for) <= today) || task.completed) {
+                            const { data: updateResult, error: updateError } = await supabase
                                 .from('tasks')
                                 .update({
                                     completed: false,
                                     completed_at: null,
                                     scheduled_for: null
                                 })
-                                .eq('id', task.id);
+                                .eq('id', task.id)
+                                .select();
 
-                            console.log(`Task giornaliera resettata: ${task.content}`);
+                            if (updateError) {
+                                console.error(`Errore nell'aggiornamento della task ${task.id}:`, updateError);
+                                continue;
+                            }
+
+                            taskUpdated = true;
+                            updatedTaskIds.push(task.id);
+                            console.log(`Task giornaliera resettata: ${task.content} (ID: ${task.id})`);
                         }
                     }
 
-                    // Ricarica le task dopo il reset - forziamo il ricaricamento
-                    return true; // Indichiamo che abbiamo fatto delle modifiche
+                    // Scatena l'evento personalizzato se è stata aggiornata almeno una task
+                    if (taskUpdated) {
+                        console.log('Scateno evento dailyTasksReset con', updatedTaskIds.length, 'task aggiornate');
+                        const event = new CustomEvent('dailyTasksReset', {
+                            detail: {
+                                resetTime: new Date().toISOString(),
+                                taskIds: updatedTaskIds,
+                                count: updatedTaskIds.length
+                            }
+                        });
+                        document.dispatchEvent(event);
+
+                        // Forza immediatamente il ricaricamento per essere sicuri
+                        setTimeout(() => {
+                            console.log('Forzatura ricaricamento task dopo reset...');
+                            loadTasks();
+                        }, 500);
+                    }
+
+                    // Ricarica le task dopo il reset
+                    return taskUpdated; // Indichiamo che abbiamo fatto delle modifiche
                 } else {
                     console.log('Nessuna task giornaliera da resettare');
                     return false; // Nessuna modifica effettuata
@@ -523,12 +564,22 @@
             const timeUntilMidnight = tomorrow - now;
             console.log(`Prossimo controllo task giornaliere tra ${Math.floor(timeUntilMidnight / 1000 / 60)} minuti`);
 
-            // Controllo a mezzanotte esatta: forziamo un refresh completo della pagina
+            // Controllo a mezzanotte esatta
             setTimeout(() => {
-                console.log('È mezzanotte! Riavvio automatico dell\'app per aggiornare le task giornaliere...');
+                console.log('È mezzanotte! Aggiornamento task giornaliere...');
 
-                // Forza un refresh completo della pagina (equivalente a cmd-r)
-                location.reload();
+                // Aggiorna la variabile del giorno attuale
+                currentDay = new Date().getDate();
+
+                // Forza un controllo delle task giornaliere
+                checkDailyTasksForReset(true).then(hasReset => {
+                    // Forza il ricaricamento delle task per aggiornare la UI
+                    console.log('Ricaricamento task dopo il reset di mezzanotte');
+                    loadTasks();
+
+                    // Programma il controllo per il giorno successivo
+                    scheduleNextDayCheck();
+                });
 
             }, timeUntilMidnight);
         }
@@ -1256,7 +1307,7 @@
         async function handleDrop(e) {
             e.preventDefault();
             console.log('DEBUG: handleDrop chiamato', e.currentTarget.id);
-            
+
             if (!draggedTask || this === draggedTask) {
                 console.log('DEBUG: Drop ignorato - draggedTask nullo o drop su se stesso');
                 return;
@@ -1265,7 +1316,7 @@
             // Ottieni i dati della task trascinata
             let dragData;
             let success = false; // Flag per tracciare il successo dell'operazione
-            
+
             try {
                 dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
                 console.log('DEBUG: Dati drag&drop', dragData);
@@ -1448,7 +1499,7 @@
 
                     // Segna l'operazione come riuscita
                     success = true;
-                    
+
                     // Mostra un messaggio di successo
                     if (hasVisibleSubtasks) {
                         showStatus('Task e relative subtask spostate', 'success');
@@ -1477,7 +1528,7 @@
             document.querySelectorAll('.potential-parent').forEach(el => {
                 el.classList.remove('potential-parent');
             });
-            
+
             // Se l'operazione è riuscita e non c'è già un messaggio di stato, mostra un messaggio di conferma
             if (success && !document.querySelector('.status-message')) {
                 showStatus('Spostamento completato', 'success');
@@ -2544,7 +2595,7 @@
                 console.log('Refresh della pagina bloccato');
                 return;
             }
-            
+
             // Controlla se è premuto Command (Mac) o Control (Windows)
             if ((e.metaKey || e.ctrlKey) && !isNaN(e.key) && e.key !== '0') {
                 e.preventDefault();
@@ -3048,103 +3099,144 @@
                 console.error("Errore nell'inizializzazione del database dei timer:", err);
             }
 
-            // Aggiungi un evento da tastiera per verificare i timer (Ctrl+Shift+T)
-            document.addEventListener('keydown', function (e) {
-                if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-                    e.preventDefault();
-                    // Verifica e mostra i timer salvati
-                    checkSavedTimers().then(data => {
-                        // Crea un popup di debug
-                        const debugDiv = document.createElement('div');
-                        debugDiv.style.position = 'fixed';
-                        debugDiv.style.top = '20px';
-                        debugDiv.style.left = '20px';
-                        debugDiv.style.backgroundColor = '#171717';
-                        debugDiv.style.border = '1px solid #C47162';
-                        debugDiv.style.borderRadius = '8px';
-                        debugDiv.style.padding = '15px';
-                        debugDiv.style.zIndex = '9999';
-                        debugDiv.style.color = 'white';
-                        debugDiv.style.maxHeight = '80vh';
-                        debugDiv.style.overflow = 'auto';
+            // Aggiungi listener di debug per monitorare aggiornamenti UI
+            monitorUIUpdates();
 
-                        // Aggiungi un titolo
-                        const titleDiv = document.createElement('div');
-                        titleDiv.textContent = 'Report Timer Salvati';
-                        titleDiv.style.fontSize = '16px';
-                        titleDiv.style.fontWeight = 'bold';
-                        titleDiv.style.marginBottom = '10px';
-                        titleDiv.style.borderBottom = '1px solid #C47162';
-                        titleDiv.style.paddingBottom = '5px';
-                        debugDiv.appendChild(titleDiv);
-
-                        // Aggiungi i dati in una tabella
-                        const tableDiv = document.createElement('table');
-                        tableDiv.style.borderCollapse = 'collapse';
-                        tableDiv.style.width = '100%';
-
-                        // Intestazione tabella
-                        const thead = document.createElement('thead');
-                        const headerRow = document.createElement('tr');
-                        ['ID', 'Task', 'Secondi', 'Tempo', 'Attivo'].forEach(text => {
-                            const th = document.createElement('th');
-                            th.textContent = text;
-                            th.style.padding = '8px';
-                            th.style.textAlign = 'left';
-                            th.style.borderBottom = '1px solid #444';
-                            headerRow.appendChild(th);
-                        });
-                        thead.appendChild(headerRow);
-                        tableDiv.appendChild(thead);
-
-                        // Corpo tabella
-                        const tbody = document.createElement('tbody');
-                        data.forEach(task => {
-                            const row = document.createElement('tr');
-
-                            // Crea le celle
-                            [
-                                task.id,
-                                task.content,
-                                task.timer_seconds || 0,
-                                formatTime(task.timer_seconds || 0),
-                                task.timer_enabled ? 'Sì' : 'No'
-                            ].forEach(text => {
-                                const td = document.createElement('td');
-                                td.textContent = text;
-                                td.style.padding = '8px';
-                                td.style.borderBottom = '1px solid #333';
-                                row.appendChild(td);
-                            });
-
-                            tbody.appendChild(row);
-                        });
-                        tableDiv.appendChild(tbody);
-                        debugDiv.appendChild(tableDiv);
-
-                        // Aggiungi pulsante di chiusura
-                        const closeButton = document.createElement('button');
-                        closeButton.textContent = 'Chiudi';
-                        closeButton.style.backgroundColor = '#C47162';
-                        closeButton.style.color = 'white';
-                        closeButton.style.border = 'none';
-                        closeButton.style.padding = '8px 15px';
-                        closeButton.style.borderRadius = '4px';
-                        closeButton.style.marginTop = '15px';
-                        closeButton.style.cursor = 'pointer';
-                        closeButton.addEventListener('click', () => {
-                            document.body.removeChild(debugDiv);
-                        });
-                        debugDiv.appendChild(closeButton);
-
-                        // Aggiungi alla pagina
-                        document.body.appendChild(debugDiv);
-                    });
-                }
+            // Aggiungi event listener per gestire il reset delle task giornaliere
+            document.addEventListener('dailyTasksReset', function (e) {
+                console.log('Evento dailyTasksReset ricevuto, aggiornamento interfaccia...', e.detail);
+                loadTasks();
             });
+
+            // Avvia il sistema di refresh automatico periodico
+            startAutoRefresh();
+
+            // Correggi il gestore del menu progetti
+            setupProjectsMenu();
         });
 
+        // Funzione per avviare il refresh automatico periodico
+        function startAutoRefresh() {
+            // Controlla subito all'avvio
+            checkDailyTasksForReset(false).then(hasReset => {
+                if (hasReset) {
+                    console.log('Task giornaliere resettate all\'avvio');
+                    loadTasks();
+                }
+            });
+
+            // Aggiungiamo un osservatore per monitorare i cambiamenti nella UI
+            setupUIObserver();
+
+            // Imposta un intervallo di refresh durante il giorno (meno frequente)
+            // Esegui un refresh automatico ogni 30 minuti durante il giorno normale
+            autoRefreshInterval = setInterval(async function () {
+                const now = new Date();
+                const hours = now.getHours();
+                const minutes = now.getMinutes();
+
+                // Vicino alla mezzanotte il controllo è già più frequente, quindi evitiamo duplicazioni
+                const isNearMidnight = (hours === 23 && minutes >= 58) || (hours === 0 && minutes <= 5);
+
+                if (!isNearMidnight) {
+                    console.log('Refresh automatico periodico in esecuzione...');
+                    const hasReset = await checkDailyTasksForReset(false);
+                    if (hasReset) {
+                        console.log('Task giornaliere resettate durante refresh periodico');
+                        await loadTasks();
+                    } else {
+                        // Ogni 3 refresh, forza comunque un ricaricamento anche se non ci sono stati reset
+                        // per garantire che la UI sia sempre allineata con il database
+                        const minutesOfDay = hours * 60 + minutes;
+                        if (minutesOfDay % 90 === 0) { // Ogni 90 minuti
+                            console.log('Forzatura ricaricamento task periodico...');
+                            await loadTasks();
+                        }
+                    }
+                }
+            }, 1800000); // Ogni 30 minuti (1800000 ms)
+
+            console.log('Sistema di refresh automatico avviato');
+        }
+
+        // Osservatore per monitorare i cambiamenti nella UI
+        function setupUIObserver() {
+            // Monitora cambiamenti nelle liste di task
+            const taskList = document.getElementById('taskList');
+            const completedTasksList = document.getElementById('completedTasksList');
+
+            if (!taskList || !completedTasksList) {
+                console.error('Impossibile configurare l\'osservatore UI: liste non trovate');
+                return;
+            }
+
+            console.log('Configurazione osservatore UI...');
+
+            const observerConfig = {
+                childList: true,  // osserva quando vengono aggiunti/rimossi figli diretti
+                subtree: true,    // osserva anche le modifiche nei figli
+                attributes: false  // non osservare cambiamenti di attributi
+            };
+
+            // Funzione di callback quando vengono rilevate modifiche
+            const observerCallback = function (mutationsList, observer) {
+                for (const mutation of mutationsList) {
+                    if (mutation.type === 'childList') {
+                        const timestamp = new Date().toLocaleTimeString();
+                        console.log(`[${timestamp}] Aggiornamento UI rilevato:`,
+                            mutation.addedNodes.length > 0 ? `${mutation.addedNodes.length} nodi aggiunti` : '',
+                            mutation.removedNodes.length > 0 ? `${mutation.removedNodes.length} nodi rimossi` : '');
+
+                        // Aggiorna uno stato interno per tenere traccia dell'ultimo aggiornamento
+                        window._lastUIUpdate = {
+                            timestamp: Date.now(),
+                            addedNodes: mutation.addedNodes.length,
+                            removedNodes: mutation.removedNodes.length
+                        };
+                    }
+                }
+            };
+
+            // Crea e avvia gli osservatori
+            const taskListObserver = new MutationObserver(observerCallback);
+            const completedTasksObserver = new MutationObserver(observerCallback);
+
+            // Avvia l'osservazione
+            taskListObserver.observe(taskList, observerConfig);
+            completedTasksObserver.observe(completedTasksList, observerConfig);
+
+            // Salva riferimenti agli osservatori per un eventuale stop futuro
+            window._uiObservers = {
+                taskList: taskListObserver,
+                completedTasks: completedTasksObserver
+            };
+
+            console.log('Osservatore UI avviato con successo');
+
+            // Aggiungi anche un controllo di "heartbeat" per verificare che la UI sia aggiornata
+            setInterval(() => {
+                const now = Date.now();
+                const lastUpdate = window._lastUIUpdate ? now - window._lastUIUpdate.timestamp : null;
+                const hours = new Date().getHours();
+                const minutes = new Date().getMinutes();
+
+                // Se siamo vicini alla mezzanotte (23:45 - 00:15) e non ci sono stati aggiornamenti UI negli ultimi 5 minuti
+                const isNearMidnight = (hours === 23 && minutes >= 45) || (hours === 0 && minutes <= 15);
+
+                if (isNearMidnight && (!lastUpdate || lastUpdate > 300000)) {
+                    console.log('Heartbeat: Nessun aggiornamento UI rilevato negli ultimi 5 minuti vicino a mezzanotte');
+                    console.log('Forzatura aggiornamento UI...');
+
+                    // Forza un controllo e ricaricamento
+                    checkDailyTasksForReset(true).then(hasReset => {
+                        loadTasks();
+                    });
+                }
+            }, 300000); // Controlla ogni 5 minuti
+        }
+
         // ... existing code ...
+
         // Funzione per applicare tutti i filtri attivi
         function applyFilters() {
             // Ottieni solo le task non completate dal taskList (escludendo le task completate)
@@ -4412,6 +4504,205 @@
             }
         });
         */
+
+        // ... existing code ...
+
+        // Aggiungi una funzione per monitorare gli aggiornamenti dell'interfaccia
+        function monitorUIUpdates() {
+            // Monitor per aggiornamenti UI e diagnostica
+            const originalConsoleLog = console.log;
+            console.log = function () {
+                // Filtra solo i log relativi all'aggiornamento delle task
+                if (arguments[0] && typeof arguments[0] === 'string' &&
+                    (arguments[0].includes('task') ||
+                        arguments[0].includes('Task') ||
+                        arguments[0].includes('UI') ||
+                        arguments[0].includes('progett'))) {
+
+                    // Aggiungi timestamp
+                    const now = new Date();
+                    const timestamp = `[${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}]`;
+
+                    // Invia al log originale
+                    originalConsoleLog.apply(console, [timestamp, ...arguments]);
+                } else {
+                    // Log normale senza timestamp per altri messaggi
+                    originalConsoleLog.apply(console, arguments);
+                }
+            };
+
+            // Aggiungi shortcut da tastiera per debug (Ctrl+Shift+R)
+            document.addEventListener('keydown', function (e) {
+                if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+                    e.preventDefault();
+                    console.log('Forzatura aggiornamento UI da shortcut');
+
+                    // Forza un reset e controllo dell'interfaccia
+                    checkDailyTasksForReset(true).then(hasReset => {
+                        // Ricarica comunque le task
+                        loadTasks();
+
+                        // Verifica anche lo stato del menu progetti
+                        const projectsMenu = document.querySelector('.projects-content');
+                        console.log('Stato menu progetti:',
+                            projectsMenu.classList.contains('active') ? 'aperto' : 'chiuso',
+                            'visibilità:', projectsMenu.style.visibility);
+                    });
+                }
+            });
+
+            // Aggiungi shortcut da tastiera per visualizzare i timer (Ctrl+Shift+T)
+            document.addEventListener('keydown', function (e) {
+                if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+                    e.preventDefault();
+                    // Verifica e mostra i timer salvati
+                    checkSavedTimers().then(data => {
+                        // Crea un popup di debug
+                        const debugDiv = document.createElement('div');
+                        debugDiv.style.position = 'fixed';
+                        debugDiv.style.top = '20px';
+                        debugDiv.style.left = '20px';
+                        debugDiv.style.backgroundColor = '#171717';
+                        debugDiv.style.border = '1px solid #C47162';
+                        debugDiv.style.borderRadius = '8px';
+                        debugDiv.style.padding = '15px';
+                        debugDiv.style.zIndex = '9999';
+                        debugDiv.style.color = 'white';
+                        debugDiv.style.maxHeight = '80vh';
+                        debugDiv.style.overflow = 'auto';
+
+                        // Aggiungi un titolo
+                        const titleDiv = document.createElement('div');
+                        titleDiv.textContent = 'Report Timer Salvati';
+                        titleDiv.style.fontSize = '16px';
+                        titleDiv.style.fontWeight = 'bold';
+                        titleDiv.style.marginBottom = '10px';
+                        titleDiv.style.borderBottom = '1px solid #C47162';
+                        titleDiv.style.paddingBottom = '5px';
+                        debugDiv.appendChild(titleDiv);
+
+                        // Aggiungi i dati in una tabella
+                        const tableDiv = document.createElement('table');
+                        tableDiv.style.borderCollapse = 'collapse';
+                        tableDiv.style.width = '100%';
+
+                        // Intestazione tabella
+                        const thead = document.createElement('thead');
+                        const headerRow = document.createElement('tr');
+                        ['ID', 'Task', 'Secondi', 'Tempo', 'Attivo'].forEach(text => {
+                            const th = document.createElement('th');
+                            th.textContent = text;
+                            th.style.padding = '8px';
+                            th.style.textAlign = 'left';
+                            th.style.borderBottom = '1px solid #444';
+                            headerRow.appendChild(th);
+                        });
+                        thead.appendChild(headerRow);
+                        tableDiv.appendChild(thead);
+
+                        // Corpo tabella
+                        const tbody = document.createElement('tbody');
+                        data.forEach(task => {
+                            const row = document.createElement('tr');
+
+                            // Crea le celle
+                            [
+                                task.id,
+                                task.content,
+                                task.timer_seconds || 0,
+                                formatTime(task.timer_seconds || 0),
+                                task.timer_enabled ? 'Sì' : 'No'
+                            ].forEach(text => {
+                                const td = document.createElement('td');
+                                td.textContent = text;
+                                td.style.padding = '8px';
+                                td.style.borderBottom = '1px solid #333';
+                                row.appendChild(td);
+                            });
+
+                            tbody.appendChild(row);
+                        });
+                        tableDiv.appendChild(tbody);
+                        debugDiv.appendChild(tableDiv);
+
+                        // Aggiungi pulsante di chiusura
+                        const closeButton = document.createElement('button');
+                        closeButton.textContent = 'Chiudi';
+                        closeButton.style.backgroundColor = '#C47162';
+                        closeButton.style.color = 'white';
+                        closeButton.style.border = 'none';
+                        closeButton.style.padding = '8px 15px';
+                        closeButton.style.borderRadius = '4px';
+                        closeButton.style.marginTop = '15px';
+                        closeButton.style.cursor = 'pointer';
+                        closeButton.addEventListener('click', () => {
+                            document.body.removeChild(debugDiv);
+                        });
+                        debugDiv.appendChild(closeButton);
+
+                        // Aggiungi alla pagina
+                        document.body.appendChild(debugDiv);
+                    });
+                }
+            });
+
+            console.log('Monitoraggio aggiornamenti UI attivato');
+        }
+
+        // Funzione per configurare correttamente il menu dei progetti
+        function setupProjectsMenu() {
+            const projectsTrigger = document.querySelector('.projects-trigger');
+            const projectsContent = document.querySelector('.projects-content');
+
+            if (!projectsTrigger || !projectsContent) {
+                console.error('Elementi del menu progetti non trovati');
+                return;
+            }
+
+            console.log('Configurazione menu progetti...');
+
+            // Rimuovi eventuali gestori esistenti clonando il pulsante
+            const newTrigger = projectsTrigger.cloneNode(true);
+            projectsTrigger.parentNode.replaceChild(newTrigger, projectsTrigger);
+
+            // Aggiungi il gestore dell'evento click
+            newTrigger.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                console.log('Click sul menu progetti');
+
+                // Toggle della classe active
+                projectsContent.classList.toggle('active');
+
+                // Aggiorna la visibilità
+                if (projectsContent.classList.contains('active')) {
+                    projectsContent.style.opacity = '1';
+                    projectsContent.style.visibility = 'visible';
+                    projectsContent.style.display = 'block';
+                    console.log('Menu progetti aperto');
+                } else {
+                    projectsContent.style.opacity = '0';
+                    projectsContent.style.visibility = 'hidden';
+                    console.log('Menu progetti chiuso');
+                }
+            });
+
+            // Chiudi il menu quando si clicca altrove
+            document.addEventListener('click', function (event) {
+                if (projectsContent.classList.contains('active') &&
+                    !projectsContent.contains(event.target) &&
+                    !newTrigger.contains(event.target)) {
+
+                    projectsContent.classList.remove('active');
+                    projectsContent.style.opacity = '0';
+                    projectsContent.style.visibility = 'hidden';
+                    console.log('Menu progetti chiuso (click esterno)');
+                }
+            });
+
+            console.log('Menu progetti configurato correttamente');
+        }
 
         // ... existing code ...
     </script>

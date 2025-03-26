@@ -114,6 +114,8 @@ class TaskComponent {
             const tasks = await this.db.getTasksByProject(activeProject.id);
             const dailyTasks = tasks.filter(task => task.is_daily);
 
+            let taskUpdated = false;
+
             // Per ogni task giornaliero completato, reimpostalo come non completato
             for (const task of dailyTasks) {
                 if (task.completed) {
@@ -125,11 +127,20 @@ class TaskComponent {
 
                     // Aggiorna nello stato
                     this.appState.updateTask(updatedTask);
+                    taskUpdated = true;
                 }
             }
 
-            // Ricarica e renderizza tutti i task
-            this.loadAndRenderTasks(activeProject.id);
+            // Forza il ricaricamento e la renderizzazione di tutti i task
+            await this.loadAndRenderTasks(activeProject.id);
+
+            // Emetti un evento personalizzato per notificare l'aggiornamento dei task giornalieri
+            if (taskUpdated) {
+                const event = new CustomEvent('dailyTasksReset', {
+                    detail: { projectId: activeProject.id }
+                });
+                document.dispatchEvent(event);
+            }
 
             console.log('TaskComponent: Task giornalieri ripristinati');
         } catch (error) {

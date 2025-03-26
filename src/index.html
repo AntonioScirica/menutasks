@@ -62,6 +62,14 @@
             font-size: 11px;
             margin-top: 3px;
         }
+
+        /* Stile per gli input disabilitati quando il timer è attivo */
+        .time-disabled input {
+            opacity: 0.5;
+            background-color: #1e1e20 !important;
+            border-color: #333 !important;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 
@@ -2067,11 +2075,22 @@
                     if (!parentId) {
                         newTask.priority = currentPriority;
 
-                        // Salva la tempistica esatta
-                        const tempistica = calcolaTimestamp();
-                        if (tempistica) {
-                            newTask.time_end_task = tempistica;
-                            console.log('Tempistica salvata:', tempistica);
+                        // Salva lo stato e il valore del timer in base alla scelta dell'utente
+                        const timerEnabled = document.getElementById('timerToggle').checked;
+                        newTask.timer_enabled = timerEnabled;
+                        newTask.timer_seconds = 0; // Inizia sempre da zero
+                        console.log('Timer impostato:', timerEnabled ? 'attivo' : 'disattivato');
+
+                        // Salva la tempistica esatta solo se il timer non è attivo
+                        if (!timerEnabled) {
+                            const tempistica = calcolaTimestamp();
+                            if (tempistica) {
+                                newTask.time_end_task = tempistica;
+                                console.log('Tempistica salvata:', tempistica);
+                            }
+                        } else {
+                            // Se il timer è attivo, non salvare time_end_task
+                            console.log('Timer attivo: non verrà considerato il tempo manuale');
                         }
 
                         // Salva lo stato giornaliero per task principali
@@ -2081,14 +2100,6 @@
                         if (currentTaskDescription) {
                             newTask.description = currentTaskDescription;
                         }
-
-                        // Salva lo stato e il valore del timer in base alla scelta dell'utente
-                        const timerEnabled = document.getElementById('timerToggle').checked;
-                        newTask.timer_enabled = timerEnabled;
-                        newTask.timer_seconds = 0; // Inizia sempre da zero
-                        console.log('Timer impostato:', timerEnabled ? 'attivo' : 'disattivato');
-
-                        console.log('Task giornaliera:', isDailyEnabled);
                     } else {
                         // Ottieni la priorità dal genitore
                         const { data: parentData, error: parentError } = await supabase
@@ -2874,12 +2885,22 @@
                         // Se il timer non è attivo, prova a recuperare i secondi dal database
                         const { data: timerData, error: timerError } = await supabase
                             .from('tasks')
-                            .select('timer_seconds')
+                            .select('timer_seconds, timer_enabled, time_end_task')
                             .eq('id', taskId)
                             .single();
 
-                        if (!timerError && timerData && timerData.timer_seconds) {
-                            taskSeconds = timerData.timer_seconds;
+                        if (!timerError && timerData) {
+                            // Controlla se il timer è abilitato e ha dei secondi
+                            if (timerData.timer_enabled && timerData.timer_seconds) {
+                                taskSeconds = timerData.timer_seconds;
+                                console.log(`Task ${taskId} completata: recuperati ${taskSeconds} secondi dal timer`);
+                            }
+                            // Se la task ha un time_end_task ma il timer non è abilitato, non calcolare secondi aggiuntivi
+                            // time_end_task è già in minuti, quindi verrà considerato direttamente
+                            else if (timerData.time_end_task && !timerData.timer_enabled) {
+                                console.log(`Task ${taskId} completata: usando time_end_task esistente (${timerData.time_end_task} minuti)`);
+                                taskSeconds = 0; // Non aggiungere secondi dal timer
+                            }
                         }
                     }
 
@@ -2890,17 +2911,25 @@
                         // Ottieni il valore attuale di time_end_task se esiste
                         const { data: taskData, error: taskError } = await supabase
                             .from('tasks')
-                            .select('time_end_task')
+                            .select('time_end_task, timer_enabled')
                             .eq('id', taskId)
                             .single();
 
                         // Aggiungi il tempo al valore esistente o inizializza a 0
-                        const currentMinutes = (!taskError && taskData && taskData.time_end_task)
-                            ? parseInt(taskData.time_end_task)
-                            : 0;
-
-                        updateData.time_end_task = currentMinutes + taskMinutes;
-                        console.log(`Task ${taskId} completata: aggiunto ${taskMinutes} minuti al tempo totale del progetto`);
+                        // Attenzione: aggiungi il tempo dal timer solo se timer_enabled è true
+                        // Altrimenti potrebbe esserci già un valore in time_end_task che non va incrementato
+                        if (!taskError && taskData) {
+                            if (taskData.timer_enabled) {
+                                const currentMinutes = taskData.time_end_task ? parseInt(taskData.time_end_task) : 0;
+                                updateData.time_end_task = currentMinutes + taskMinutes;
+                                console.log(`Task ${taskId} completata: aggiunto ${taskMinutes} minuti dal timer al tempo totale`);
+                            } else {
+                                console.log(`Task ${taskId} completata: timer non attivo, mantenuto time_end_task esistente`);
+                            }
+                        } else {
+                            updateData.time_end_task = taskMinutes;
+                            console.log(`Task ${taskId} completata: impostato time_end_task a ${taskMinutes} minuti`);
+                        }
                     }
 
                     // Ferma il timer se la task viene completata
@@ -3527,10 +3556,25 @@
                 saveTimeButton.addEventListener('click', async function (event) {
                     event.stopPropagation();
 
-                    // Salva i valori di input in variabili globali
-                    savedTaskDays = parseInt(document.getElementById('taskDays').value) || 0;
-                    savedTaskHours = parseInt(document.getElementById('taskHours').value) || 0;
-                    savedTaskMinutes = parseInt(document.getElementById('taskMinutes').value) || 0;
+                    // Ottieni lo stato del timer toggle
+                    const timerEnabled = document.getElementById('timerToggle').checked;
+
+                    // Salva i valori di input in variabili globali solo se il timer è disattivato
+                    if (!timerEnabled) {
+                        savedTaskDays = parseInt(document.getElementById('taskDays').value) || 0;
+                        savedTaskHours = parseInt(document.getElementById('taskHours').value) || 0;
+                        savedTaskMinutes = parseInt(document.getElementById('taskMinutes').value) || 0;
+                    } else {
+                        // Se il timer è attivato, resettiamo i valori di tempo manuali
+                        savedTaskDays = 0;
+                        savedTaskHours = 0;
+                        savedTaskMinutes = 0;
+                        // Assicuriamoci di svuotare anche i campi visivi
+                        document.getElementById('taskDays').value = '';
+                        document.getElementById('taskHours').value = '';
+                        document.getElementById('taskMinutes').value = '';
+                    }
+
                     isDailyEnabled = document.getElementById('dailyToggle').checked;
                     currentTaskDescription = document.getElementById('taskDescription').value.trim();
 
@@ -3558,16 +3602,18 @@
                             // Aggiorna la descrizione
                             updateData.description = currentTaskDescription;
 
-                            // Aggiorna il time_end_task solo se è stato impostato un tempo
-                            if (hasSomeTime) {
+                            // Aggiorna il time_end_task solo se il timer è disattivato e c'è un tempo manuale
+                            if (!timerEnabled && hasSomeTime) {
                                 const tempistica = calcolaTimestamp();
                                 if (tempistica) {
                                     updateData.time_end_task = tempistica;
                                 }
+                            } else if (timerEnabled) {
+                                // Se il timer è attivato, assicurati che time_end_task non venga aggiornato con i valori manuali
+                                // Non impostare time_end_task qui, verrà gestito dal timer
                             }
 
                             // Aggiorna lo stato e il valore del timer
-                            const timerEnabled = document.getElementById('timerToggle').checked;
                             updateData.timer_enabled = timerEnabled;
                             if (timerEnabled) {
                                 updateData.timer_seconds = timerSeconds;
@@ -3606,8 +3652,8 @@
                         }
                     }
 
-                    // Segnala che le impostazioni sono state salvate
-                    timeSettingsSaved = hasSomeTime;
+                    // Segnala che le impostazioni sono state salvate, ma solo se il timer è disattivato
+                    timeSettingsSaved = !timerEnabled && hasSomeTime;
 
                     // Chiudi il popup
                     taskSettingsPopup.classList.remove('visible');
@@ -4230,6 +4276,7 @@
             const timerLabel = document.getElementById('timerLabel');
             const timerDisplay = document.getElementById('timerDisplay');
             const timeSection = document.getElementById('timeSettingsRow');
+            const timeInputs = document.querySelectorAll('#timeSettingsRow input');
 
             if (this.checked) {
                 // Timer attivato visivamente
@@ -4241,6 +4288,13 @@
                 if (timeSection) {
                     timeSection.classList.add('time-disabled');
                 }
+
+                // Disabilita fisicamente gli input di tempo e pulisci i valori
+                timeInputs.forEach(input => {
+                    input.disabled = true;
+                    input.value = '';
+                    input.placeholder = '-';
+                });
 
                 // NON avviare il timer visuale, mostra solo il contatore statico 00:00:00
                 // Ferma qualsiasi timer visuale precedente
@@ -4260,6 +4314,16 @@
                 if (timeSection) {
                     timeSection.classList.remove('time-disabled');
                 }
+
+                // Riabilita gli input di tempo e ripristina i placeholder
+                timeInputs.forEach(input => {
+                    input.disabled = false;
+                    if (input.id === 'taskMinutes') {
+                        input.placeholder = '00';
+                    } else {
+                        input.placeholder = '0';
+                    }
+                });
 
                 // Ferma il timer visuale se era in esecuzione
                 if (timerInterval) {

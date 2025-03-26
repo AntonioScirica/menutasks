@@ -110,7 +110,7 @@
                 </div>
 
                 <!-- Sezione PRIORITY -->
-                <h3 class="info-header">PRIORITY</h3>
+                <h3 class="info-header" id="priorityHeader">PRIORITY</h3>
                 <div class="info-item completed-button priority-filter" id="urgentFilter">
                     <i data-lucide="flame" class="urgent-icon icon-flame"></i>
                     <span>On Fire</span>
@@ -347,9 +347,15 @@
             taskInput.addEventListener('input', function () {
                 const taskInputContainer = this.closest('.task-input-container');
                 if (this.value.trim() !== '') {
-                    taskInputContainer.classList.add('has-text');
+                    // Mostra il selettore solo se non è già visibile
+                    prioritySelector.classList.add('visible');
+                    taskInput.closest('.task-input-container').classList.add('has-text');
                 } else {
-                    taskInputContainer.classList.remove('has-text');
+                    // Nascondi il selettore se l'input è vuoto
+                    prioritySelector.classList.remove('visible');
+                    taskInput.closest('.task-input-container').classList.remove('has-text');
+                    // Resetta la priorità a "normal" quando il testo viene cancellato
+                    setPriority('normal');
                 }
             });
 
@@ -396,6 +402,11 @@
 
             // Controlla ogni minuto se è passata mezzanotte
             checkMidnightInterval = setInterval(checkIfMidnightPassed, 60000);
+
+            // Configura il menu dei progetti
+            setupProjectsMenu();
+
+            console.log('Interfaccia utente inizializzata');
         }
 
         // Variabile per tenere traccia del giorno corrente
@@ -1648,6 +1659,13 @@
                 document.getElementById('urgentTasksCount').textContent = '0';
                 document.getElementById('mediumTasksCount').textContent = '0';
                 document.getElementById('basicTasksCount').textContent = '0';
+
+                // Nascondi tutte le sezioni di priorità se non ci sono task
+                document.getElementById('urgentFilter').style.display = 'none';
+                document.getElementById('mediumFilter').style.display = 'none';
+                document.getElementById('basicFilter').style.display = 'none';
+                // Nascondi anche l'header PRIORITY
+                document.getElementById('priorityHeader').style.display = 'none';
                 return;
             }
 
@@ -1699,6 +1717,16 @@
             document.getElementById('urgentTasksCount').textContent = urgentCount;
             document.getElementById('mediumTasksCount').textContent = mediumCount;
             document.getElementById('basicTasksCount').textContent = basicCount;
+
+            // Mostra o nascondi le sezioni delle priorità in base alla presenza di task
+            document.getElementById('urgentFilter').style.display = urgentCount > 0 ? 'flex' : 'none';
+            document.getElementById('mediumFilter').style.display = mediumCount > 0 ? 'flex' : 'none';
+            document.getElementById('basicFilter').style.display = basicCount > 0 ? 'flex' : 'none';
+
+            // Verifica se c'è almeno una task con priorità
+            const hasAnyPriorityTask = urgentCount > 0 || mediumCount > 0 || basicCount > 0;
+            // Mostra o nascondi l'header PRIORITY
+            document.getElementById('priorityHeader').style.display = hasAnyPriorityTask ? 'block' : 'none';
         }
 
         // Carica le task da Supabase
@@ -3111,8 +3139,8 @@
             // Avvia il sistema di refresh automatico periodico
             startAutoRefresh();
 
-            // Correggi il gestore del menu progetti
-            setupProjectsMenu();
+            // Non è necessario chiamare setupProjectsMenu qui perché è già chiamato in initUI
+            // setupProjectsMenu();
         });
 
         // Funzione per avviare il refresh automatico periodico
@@ -4411,6 +4439,10 @@
                 console.log("Event listener aggiunto al pulsante addTask");
             }
 
+            // Configurazione del menu progetti tramite la funzione dedicata
+            // Non configuriamo il menu qui per evitare duplicazioni, lo faremo più avanti
+            // Questo commento sostituisce il blocco di codice precedente
+            /* RIMOSSO PER EVITARE DUPLICAZIONI:
             // Aggiungi event listener al pulsante projects-trigger
             const projectsTrigger = document.querySelector('.projects-trigger');
             if (projectsTrigger) {
@@ -4439,6 +4471,7 @@
                     }
                 });
             }
+            */
 
             document.getElementById('completedTasksButton').addEventListener('click', toggleCompletedTasks);
 
@@ -4653,42 +4686,67 @@
         function setupProjectsMenu() {
             const projectsTrigger = document.querySelector('.projects-trigger');
             const projectsContent = document.querySelector('.projects-content');
+            const projectsContainer = document.querySelector('.projects-container');
+            const projectMenuId = 'projects-menu-' + Date.now(); // Crea un ID unico per questo menu
 
-            if (!projectsTrigger || !projectsContent) {
+            if (!projectsTrigger || !projectsContent || !projectsContainer) {
                 console.error('Elementi del menu progetti non trovati');
                 return;
             }
 
-            console.log('Configurazione menu progetti...');
+            console.log('Configurazione menu progetti (ID: ' + projectMenuId + ')...');
 
-            // Rimuovi eventuali gestori esistenti clonando il pulsante
+            // Rimuovo tutti i gestori di eventi precedenti clonando il pulsante
             const newTrigger = projectsTrigger.cloneNode(true);
             projectsTrigger.parentNode.replaceChild(newTrigger, projectsTrigger);
 
-            // Aggiungi il gestore dell'evento click
-            newTrigger.addEventListener('click', function (event) {
-                event.preventDefault();
-                event.stopPropagation();
+            // Imposto esplicitamente lo stato iniziale del menu come chiuso
+            projectsContent.classList.remove('active');
+            projectsContent.classList.remove('visible');
+            projectsContent.style.opacity = '0';
+            projectsContent.style.visibility = 'hidden';
 
-                console.log('Click sul menu progetti');
+            // Salvo un riferimento agli elementi nel menu per diagnostica
+            window._projectsMenu = {
+                id: projectMenuId,
+                trigger: newTrigger,
+                content: projectsContent,
+                createdAt: new Date().toISOString()
+            };
 
-                // Toggle della classe active
-                projectsContent.classList.toggle('active');
+            // Funzione per mostrare il menu
+            function showMenu() {
+                console.log('Mouse hover sul menu progetti (ID: ' + projectMenuId + ')');
+                projectsContent.classList.add('active');
+                projectsContent.style.opacity = '1';
+                projectsContent.style.visibility = 'visible';
+                projectsContent.style.display = 'block';
+                console.log('Menu progetti aperto (ID: ' + projectMenuId + ')');
+            }
 
-                // Aggiorna la visibilità
-                if (projectsContent.classList.contains('active')) {
-                    projectsContent.style.opacity = '1';
-                    projectsContent.style.visibility = 'visible';
-                    projectsContent.style.display = 'block';
-                    console.log('Menu progetti aperto');
-                } else {
-                    projectsContent.style.opacity = '0';
-                    projectsContent.style.visibility = 'hidden';
-                    console.log('Menu progetti chiuso');
-                }
-            });
+            // Funzione per nascondere il menu
+            function hideMenu() {
+                // Piccolo ritardo per evitare sfarfallio
+                setTimeout(() => {
+                    // Controllo che il mouse non sia sul container o sul trigger
+                    const isHoveringContainer = projectsContainer.matches(':hover');
+                    const isHoveringTrigger = newTrigger.matches(':hover');
+                    const isHoveringContent = projectsContent.matches(':hover');
 
-            // Chiudi il menu quando si clicca altrove
+                    if (!isHoveringContainer && !isHoveringTrigger && !isHoveringContent) {
+                        projectsContent.classList.remove('active');
+                        projectsContent.style.opacity = '0';
+                        projectsContent.style.visibility = 'hidden';
+                        console.log('Menu progetti chiuso (mouse uscito) (ID: ' + projectMenuId + ')');
+                    }
+                }, 100);
+            }
+
+            // Aggiungo i gestori di eventi per l'hover
+            projectsContainer.addEventListener('mouseenter', showMenu);
+            projectsContainer.addEventListener('mouseleave', hideMenu);
+
+            // Manteniamo anche la chiusura al click esterno come fallback
             document.addEventListener('click', function (event) {
                 if (projectsContent.classList.contains('active') &&
                     !projectsContent.contains(event.target) &&
@@ -4697,11 +4755,17 @@
                     projectsContent.classList.remove('active');
                     projectsContent.style.opacity = '0';
                     projectsContent.style.visibility = 'hidden';
-                    console.log('Menu progetti chiuso (click esterno)');
+                    console.log('Menu progetti chiuso (click esterno) (ID: ' + projectMenuId + ')');
                 }
             });
 
-            console.log('Menu progetti configurato correttamente');
+            // Salvo i gestori di eventi per diagnostica
+            window._projectsMenu.handlers = {
+                showMenu: showMenu,
+                hideMenu: hideMenu
+            };
+
+            console.log('Menu progetti configurato correttamente (ID: ' + projectMenuId + ')');
         }
 
         // ... existing code ...

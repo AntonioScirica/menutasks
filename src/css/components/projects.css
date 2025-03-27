@@ -86,8 +86,9 @@
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     z-index: 1000;
     min-width: 150px;
-    width: 100%;
+    width: auto;
     display: none;
+    white-space: nowrap;
 }
 
 .menu-button:hover .menu-dropdown {
@@ -102,6 +103,7 @@
     gap: 8px;
     color: #fff;
     transition: background-color 0.2s;
+    white-space: nowrap;
 }
 
 .menu-option i {

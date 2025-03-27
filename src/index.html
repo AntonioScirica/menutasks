@@ -281,6 +281,8 @@
             // Salva l'ultimo progetto selezionato se esiste
             if (currentProjectId) {
                 try {
+                    event.preventDefault(); // Ritarda leggermente la chiusura per garantire il salvataggio
+
                     const projectName = document.getElementById('currentProjectName').textContent;
                     const projectData = {
                         id: currentProjectId,
@@ -288,7 +290,21 @@
                         timestamp: new Date().toISOString()
                     };
                     console.log('Salvataggio ultimo progetto prima della chiusura:', projectData);
+
+                    // Salvataggio sincrono (per garantire il completamento prima della chiusura)
                     localStorage.setItem('lastSelectedProject', JSON.stringify(projectData));
+                    sessionStorage.setItem('lastSelectedProject', JSON.stringify(projectData));
+
+                    // Verifica immediatamente che il salvataggio sia avvenuto
+                    const verifica = localStorage.getItem('lastSelectedProject');
+                    console.log('Verifica salvataggio pre-chiusura:', verifica ? 'OK' : 'Fallito',
+                        verifica ? JSON.parse(verifica).id : 'N/A');
+
+                    // Forzare un minimo di tempo per completare il salvataggio
+                    const startTime = Date.now();
+                    while (Date.now() - startTime < 100) {
+                        // Aspetta 100ms per garantire il salvataggio
+                    }
                 } catch (error) {
                     console.error('Errore nel salvare il progetto prima della chiusura:', error);
                 }
@@ -308,17 +324,38 @@
                     };
                     console.log('Salvataggio ultimo progetto su blur:', projectData);
 
-                    // Salva in localStorage immediatamente
+                    // Salva in localStorage e sessionStorage immediatamente
                     localStorage.setItem('lastSelectedProject', JSON.stringify(projectData));
+                    sessionStorage.setItem('lastSelectedProject', JSON.stringify(projectData));
 
                     // Salva anche in IndexedDB in modo asincrono
-                    if (databaseService && typeof databaseService.saveLastSelectedProject === 'function') {
-                        databaseService.saveLastSelectedProject(projectData)
+                    if (window.databaseService && typeof window.databaseService.saveLastSelectedProject === 'function') {
+                        window.databaseService.saveLastSelectedProject(projectData)
                             .then(() => console.log('Progetto salvato con successo in IndexedDB'))
                             .catch(err => console.error('Errore durante il salvataggio in IndexedDB:', err));
                     }
                 } catch (error) {
                     console.error('Errore nel salvare il progetto durante blur:', error);
+                }
+            }
+        });
+
+        // Aggiungi gestore per focus della finestra (quando l'app torna in primo piano)
+        window.addEventListener('focus', function () {
+            console.log('App tornata in primo piano, verifico stato progetto');
+            // Verifica che il progetto selezionato corrisponda a quello salvato
+            if (currentProjectId) {
+                const savedProject = localStorage.getItem('lastSelectedProject');
+                if (savedProject) {
+                    try {
+                        const projectData = JSON.parse(savedProject);
+                        if (projectData.id !== currentProjectId) {
+                            console.log('Discrepanza rilevata tra progetto corrente e salvato, ripristino...');
+                            selectProject(projectData.id, projectData.name);
+                        }
+                    } catch (e) {
+                        console.error('Errore nella verifica del progetto salvato:', e);
+                    }
                 }
             }
         });
@@ -910,14 +947,6 @@
                     projectElement.remove();
                 }
 
-                // Se il progetto eliminato era quello selezionato, resetta la selezione
-                if (currentProjectId === projectId) {
-                    currentProjectId = null;
-                    document.getElementById('currentProjectName').textContent = '';
-                    document.getElementById('taskList').innerHTML = '';
-                    localStorage.removeItem('lastSelectedProject');
-                }
-
                 // Controlla se ci sono ancora progetti e aggiorna la visibilità del pulsante e del container
                 const projectsList = document.getElementById('projectsList');
                 const addProjectButton = document.getElementById('addProjectButton');
@@ -946,17 +975,21 @@
                     if (allOption) {
                         allOption.remove();
                     }
-                } else if (remainingProjects.length === 1) {
-                    // Se rimane solo un progetto, selezionalo automaticamente e rimuovi l'opzione "All"
-                    const lastProject = remainingProjects[0];
-                    const lastProjectId = lastProject.dataset.projectId;
-                    const lastProjectName = lastProject.querySelector('.project-content').textContent;
-                    selectProject(lastProjectId, lastProjectName);
+                } else {
+                    // Se ci sono altri progetti, seleziona il primo disponibile
+                    const nextProject = remainingProjects[0];
+                    const nextProjectId = nextProject.dataset.projectId;
+                    const nextProjectName = nextProject.querySelector('.project-content').textContent;
 
-                    // Rimuovi l'opzione "All" se presente
-                    const allOption = document.getElementById('project-all');
-                    if (allOption) {
-                        allOption.remove();
+                    // Seleziona sempre il primo progetto disponibile
+                    selectProject(nextProjectId, nextProjectName);
+
+                    // Se rimane solo un progetto, rimuovi l'opzione "All"
+                    if (remainingProjects.length === 1) {
+                        const allOption = document.getElementById('project-all');
+                        if (allOption) {
+                            allOption.remove();
+                        }
                     }
                 }
 
@@ -978,15 +1011,42 @@
                     timestamp: new Date().toISOString() // Aggiungiamo un timestamp per tracciabilità
                 };
 
+                // Salvataggio multiplo per maggiore sicurezza (sincrono e forzato)
+                localStorage.removeItem('lastSelectedProject'); // Prima rimuovo per evitare conflitti
                 localStorage.setItem('lastSelectedProject', JSON.stringify(projectData));
-                console.log('Progetto salvato in localStorage:', projectData);
+                sessionStorage.removeItem('lastSelectedProject');
+                sessionStorage.setItem('lastSelectedProject', JSON.stringify(projectData));
 
-                // Verifica subito dopo il salvataggio
+                console.log('Progetto salvato in storage:', projectData);
+
+                // Verifica immediatamente il salvataggio
                 const saved = localStorage.getItem('lastSelectedProject');
                 if (saved) {
-                    console.log('Verifica salvataggio:', JSON.parse(saved));
+                    const parsedSaved = JSON.parse(saved);
+                    console.log('Verifica salvataggio:', parsedSaved);
+                    // Verifica che l'ID salvato corrisponda a quello che abbiamo appena impostato
+                    if (String(parsedSaved.id) !== String(projectId)) {
+                        console.warn(`ID progetto salvato (${parsedSaved.id}) non corrisponde a quello selezionato (${projectId})`);
+                        // Tenta di salvare di nuovo con un altro metodo
+                        const projectDataForced = JSON.stringify(projectData);
+                        window.localStorage.setItem('lastSelectedProject', projectDataForced);
+                        console.log('Secondo tentativo di salvataggio forzato');
+                    }
                 } else {
                     console.warn('Impossibile leggere il progetto appena salvato!');
+                    // Tenta di salvare di nuovo con un altro metodo
+                    window.localStorage.setItem('lastSelectedProject', JSON.stringify(projectData));
+                    console.log('Tentativo di salvataggio alternativo');
+                }
+
+                // Salva anche in IndexedDB se disponibile
+                if (window.databaseService && typeof window.databaseService.saveLastSelectedProject === 'function') {
+                    try {
+                        await window.databaseService.saveLastSelectedProject(projectData);
+                        console.log('Progetto salvato anche in IndexedDB');
+                    } catch (dbError) {
+                        console.error('Errore nel salvare in IndexedDB:', dbError);
+                    }
                 }
             } catch (error) {
                 console.error('Errore nel salvare il progetto in localStorage:', error);
@@ -1035,7 +1095,7 @@
                 const { data, error } = await supabase
                     .from('projects')
                     .select('*')
-                    .order('created_at', { ascending: false });
+                    .order('created_at', { ascending: true });
 
                 if (error) throw error;
 
@@ -1069,7 +1129,9 @@
 
                             // Poi controlla se ci sono più di un progetto e aggiungi l'opzione "All"
                             const projectElements = projectsList.querySelectorAll('.project-item');
-                            if (projectElements.length > 1) {
+                            let shouldSelectAll = projectElements.length > 1;
+
+                            if (shouldSelectAll) {
                                 const allOption = document.createElement('div');
                                 allOption.className = 'project-item';
                                 allOption.id = 'project-all';
@@ -1079,81 +1141,17 @@
                                 `;
                                 allOption.addEventListener('click', () => selectProject('all', 'All'));
                                 projectsList.insertBefore(allOption, projectsList.firstChild);
-                            }
 
-                            // Carica l'ultimo progetto selezionato
-                            console.log('Tentativo di ripristino ultimo progetto selezionato');
-                            const lastProjectJson = localStorage.getItem('lastSelectedProject');
-                            console.log('Dati lastSelectedProject:', lastProjectJson);
-
-                            if (lastProjectJson) {
-                                try {
-                                    const lastProject = JSON.parse(lastProjectJson);
-                                    const projectId = lastProject.id;
-                                    const projectName = lastProject.name;
-                                    const timestamp = lastProject.timestamp || 'non specificato';
-
-                                    console.log(`Tentativo di caricare: ID=${projectId}, Nome=${projectName}, Timestamp=${timestamp}`);
-
-                                    // Verifica che il progetto esista ancora
-                                    const projectExists = projectId === 'all' ||
-                                        data.some(project => project.id.toString() === projectId.toString());
-
-                                    if (projectExists) {
-                                        console.log(`Progetto trovato, seleziono ${projectName}`);
-
-                                        // Seleziona il progetto
-                                        selectProject(projectId, projectName);
-
-                                        // Aggiorna visivamente la selezione
-                                        setTimeout(() => {
-                                            const projectElement = document.getElementById(`project-${projectId}`);
-                                            if (projectElement) {
-                                                document.querySelectorAll('.project-item').forEach(item => {
-                                                    item.classList.remove('active');
-                                                });
-                                                projectElement.classList.add('active');
-                                                console.log(`Progetto ${projectId} selezionato visivamente`);
-                                            } else if (projectId === 'all') {
-                                                const allElement = document.getElementById('project-all');
-                                                if (allElement) {
-                                                    document.querySelectorAll('.project-item').forEach(item => {
-                                                        item.classList.remove('active');
-                                                    });
-                                                    allElement.classList.add('active');
-                                                    console.log('Opzione "All" selezionata visivamente');
-                                                }
-                                            }
-                                        }, 100);
-                                    } else {
-                                        console.warn(`Il progetto con ID ${projectId} non esiste più, utilizzo il primo disponibile`);
-                                        // Se il progetto non esiste più, seleziona il primo disponibile
-                                        if (data.length > 0) {
-                                            selectProject(data[0].id, data[0].name);
-                                        }
-                                    }
-                                } catch (e) {
-                                    console.error('Errore nel parsing dei dati del progetto salvato:', e);
-                                    // In caso di errore, seleziona il primo progetto
-                                    if (data.length > 0) {
-                                        selectProject(data[0].id, data[0].name);
-                                    }
-                                }
+                                // Se ci sono più progetti, seleziona sempre "All" all'avvio
+                                console.log('Più progetti presenti, seleziono opzione All');
+                                selectProject('all', 'All');
                             } else {
-                                console.log('Nessun progetto precedentemente selezionato trovato');
-                                // Se non c'è un progetto salvato, seleziona il primo
-                                if (data.length > 0) {
-                                    selectProject(data[0].id, data[0].name);
-                                }
+                                // Se c'è un solo progetto, selezionalo
+                                console.log('Solo un progetto presente, lo seleziono automaticamente');
+                                selectProject(data[0].id, data[0].name);
                             }
                         }
                     }
-                } else {
-                    // Se non ci sono progetti, resetta la selezione
-                    currentProjectId = null;
-                    document.getElementById('currentProjectName').textContent = 'Select Project';
-                    document.getElementById('taskList').innerHTML = '';
-                    localStorage.removeItem('lastSelectedProject');
                 }
             } catch (error) {
                 console.error('Errore nel caricamento dei progetti:', error);

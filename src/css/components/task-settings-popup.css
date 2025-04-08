@@ -156,15 +156,13 @@ input:checked + .toggle-slider:before {
 
 /* Aggiungi tempo e descrizione */
 .add-time,
-.add-description,
-.track-app {
+.add-description {
     color: #FFFFFF;
     cursor: pointer;
 }
 
 .add-time .settings-label,
-.add-description .settings-label,
-.track-app .settings-label {
+.add-description .settings-label {
     width: 100%;
 }
 
@@ -250,218 +248,58 @@ input:checked + .toggle-slider:before {
     cursor: not-allowed;
 }
 
-/* Gestione dello spazio per la descrizione */
+/* Stile per la sezione descrizione */
 .description-row {
-    height: auto;
-    transition: height 0.2s ease;
+    padding: 0 3px;
+    margin-bottom: 10px;
 }
 
-/* Assicuriamo una transizione fluida tra gli stati */
+/* Stabilizza l'altezza del popup durante le transizioni */
 #addDescriptionRow, #descriptionRow, #addTimeRow, #timeSettingsRow {
-    transition: none;
+    min-height: 28px;
 }
 
-/* Gestione dell'animazione e del posizionamento durante le transizioni */
+/* Fix per problemi di allineamento sul Safari */
 .task-settings-popup {
-    transition: none;
+    will-change: transform;
 }
 
-/* Rimuovo le classi di animazione complesse */
+/* Animazione per la chiusura delle sezioni */
 .settings-row.closing {
-    max-height: none;
-    overflow: visible;
-    padding: 8px 3px;
-    margin: auto;
-    opacity: 1;
-}
-
-/* Stile per l'icona del Track App */
-.track-app-icon {
-    color: #C47162;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.track-app-icon i {
-    width: 18px;
-    height: 18px;
-}
-
-.track-app:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-}
-
-/* Stili per il dropdown delle app */
-.app-dropdown-row {
-    flex-direction: column;
-    padding: 0;
-}
-
-.app-dropdown-container {
-    width: 100%;
-    border-radius: 6px;
+    max-height: 0;
+    opacity: 0;
     overflow: hidden;
-}
-
-.app-dropdown-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 10px;
-    background-color: #27272A;
-    color: #FFFFFF;
-    font-size: 13px;
-    font-weight: 500;
-}
-
-.close-app-dropdown-btn {
-    background: none;
-    border: none;
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 16px;
-    cursor: pointer;
     padding: 0;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    transition: max-height 0.3s ease-out, opacity 0.3s ease-out, padding 0.3s ease-out;
 }
 
-.close-app-dropdown-btn:hover {
-    color: #FFFFFF;
-}
-
-.app-list {
-    max-height: 180px;
-    overflow-y: auto;
-    background-color: #27272A;
-    padding: 0 0 6px 0;
-    border-bottom-left-radius: 6px;
-    border-bottom-right-radius: 6px;
-}
-
-/* Scrollbar per la lista app */
-.app-list::-webkit-scrollbar {
-    width: 6px;
-}
-
-.app-list::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 3px;
-}
-
-.app-list::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-}
-
-.app-list::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.3);
-}
-
-.app-item {
-    display: flex;
-    align-items: center;
-    padding: 8px 10px;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
-
-.app-item:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.app-item-icon {
-    color: #C47162;
-    margin-right: 10px;
-    display: flex;
-    align-items: center;
-}
-
-.app-item-icon i {
-    width: 16px;
-    height: 16px;
-}
-
-.app-item-details {
-    flex: 1;
-}
-
-.app-item-name {
-    font-size: 12px;
-    color: #FFFFFF;
-    margin-bottom: 2px;
-}
-
-.app-item-time {
-    font-size: 10px;
-    color: rgba(255, 255, 255, 0.6);
-}
-
-.app-list-loading, 
-.app-list-error, 
-.app-list-empty {
-    padding: 15px 10px;
-    text-align: center;
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 12px;
-}
-
-.app-list-error {
-    color: #ff6b6b;
-}
-
-/* Stili per l'app selezionata */
-.selected-app-row {
-    padding: 8px 3px;
-}
-
-.selected-app-container {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background-color: rgba(196, 113, 98, 0.15);
+/* Pulsante salva */
+.settings-save-button {
+    background-color: #C47162;
+    color: white;
+    border: none;
     border-radius: 4px;
-    padding: 6px 8px;
+    padding: 8px 15px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
     width: 100%;
 }
 
-.selected-app-name {
-    display: flex;
-    align-items: center;
-    color: #FFFFFF;
-    font-size: 12px;
+.settings-save-button:hover {
+    background-color: #B35C4D;
 }
 
-.selected-app-name i {
-    color: #C47162;
-    margin-right: 8px;
-    width: 16px;
-    height: 16px;
-}
-
-.remove-app-btn {
-    background: none;
-    border: none;
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 14px;
-    cursor: pointer;
-    padding: 0;
-    width: 20px;
-    height: 20px;
+/* Contenitore del pulsante salva */
+.save-button-row {
+    margin-top: 5px;
     display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
 }
 
-.remove-app-btn:hover {
-    color: #FFFFFF;
-}
-
-/* Stile per l'icona dell'app nella barra laterale */
-.icon-app-window {
-    color: #C47162 !important;
+/* Pulsante add time */
+.add-time:hover, .add-description:hover {
+    color: #C47162;
 } 

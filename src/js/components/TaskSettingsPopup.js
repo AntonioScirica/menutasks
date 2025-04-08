@@ -15,13 +15,6 @@ export default class TaskSettingsPopup {
         this.initTimeSection();
         this.initDescriptionSection();
         this.initToggleHandlers();
-        this.initTrackAppSection();
-
-        // Selezione dell'app da tracciare
-        this.selectedApp = null;
-
-        // Interval per aggiornare le app tracciate
-        this.appUpdateInterval = null;
 
         console.log('TaskSettingsPopup inizializzato');
     }
@@ -62,33 +55,6 @@ export default class TaskSettingsPopup {
                     <input type="checkbox" id="dailyToggle">
                     <span class="toggle-slider"></span>
                 </label>
-            </div>
-            <div class="settings-divider"></div>
-            <div class="settings-row track-app" id="trackAppRow">
-                <div class="settings-label">Track App</div>
-                <div class="track-app-icon">
-                    <i data-lucide="plus"></i>
-                </div>
-            </div>
-            <div class="settings-row app-dropdown-row" id="appDropdownRow" style="display: none;">
-                <div class="app-dropdown-container">
-                    <div class="app-dropdown-header">
-                        <span>App Attive</span>
-                        <button class="close-app-dropdown-btn" id="closeAppDropdownBtn">×</button>
-                    </div>
-                    <div class="app-list" id="appList">
-                        <div class="app-list-loading">Caricamento app in corso...</div>
-                    </div>
-                </div>
-            </div>
-            <div class="settings-row selected-app-row" id="selectedAppRow" style="display: none;">
-                <div class="selected-app-container">
-                    <div class="selected-app-name">
-                        <i data-lucide="app-window"></i>
-                        <span id="selectedAppName">Nessuna app selezionata</span>
-                    </div>
-                    <button class="remove-app-btn" id="removeAppBtn">×</button>
-                </div>
             </div>
             <div class="settings-divider"></div>
             <div class="settings-row add-description" id="addDescriptionRow">
@@ -240,65 +206,8 @@ export default class TaskSettingsPopup {
                 event.stopPropagation();
                 console.log('Clic sul pulsante Salva');
 
-                // Salviamo eventuali valori inseriti
-                const taskData = this.collectTaskData();
-
-                // Assicurati che le variabili globali vengano aggiornate
-                if (typeof window.timeSettingsSaved !== 'undefined') {
-                    window.timeSettingsSaved = true;
-                }
-
-                if (typeof window.currentTaskDescription !== 'undefined') {
-                    const taskDescription = document.getElementById('taskDescription');
-                    if (taskDescription) {
-                        window.currentTaskDescription = taskDescription.value.trim();
-                    }
-                }
-
-                if (typeof window.isDailyEnabled !== 'undefined') {
-                    const dailyToggle = document.getElementById('dailyToggle');
-                    if (dailyToggle) {
-                        window.isDailyEnabled = dailyToggle.checked;
-                    }
-                }
-
-                if (typeof window.savedTaskDays !== 'undefined' &&
-                    typeof window.savedTaskHours !== 'undefined' &&
-                    typeof window.savedTaskMinutes !== 'undefined') {
-
-                    const timerToggle = document.getElementById('timerToggle');
-                    const timerEnabled = timerToggle ? timerToggle.checked : false;
-
-                    if (!timerEnabled) {
-                        const dayInput = document.getElementById('taskDays');
-                        const hourInput = document.getElementById('taskHours');
-                        const minuteInput = document.getElementById('taskMinutes');
-
-                        window.savedTaskDays = dayInput ? (parseInt(dayInput.value) || 0) : 0;
-                        window.savedTaskHours = hourInput ? (parseInt(hourInput.value) || 0) : 0;
-                        window.savedTaskMinutes = minuteInput ? (parseInt(minuteInput.value) || 0) : 0;
-                    } else {
-                        window.savedTaskDays = 0;
-                        window.savedTaskHours = 0;
-                        window.savedTaskMinutes = 0;
-                    }
-                }
-
-                // Nascondi il popup
-                this.hide();
-
-                // Se è disponibile la funzione per salvare task con app tracciate e abbiamo un'app selezionata
-                if (typeof window.saveTaskWithTrackedApp === 'function' && this.selectedApp) {
-                    // Salva la task con l'app tracciata
-                    const taskId = window.activeTaskId || null;
-                    window.saveTaskWithTrackedApp(taskData, taskId)
-                        .then(savedTask => {
-                            console.log('Task salvata con app tracciata:', savedTask);
-                        })
-                        .catch(error => {
-                            console.error('Errore durante il salvataggio della task con app tracciata:', error);
-                        });
-                }
+                // Usa il nuovo metodo saveSettings per gestire correttamente il salvataggio
+                this.saveSettings();
             });
         }
 
@@ -366,24 +275,8 @@ export default class TaskSettingsPopup {
             minutes = parseInt(document.getElementById('taskMinutes').value) || 0;
         }
 
-        // Se c'è un'app selezionata, aggiungi le informazioni sull'app
-        if (this.selectedApp) {
-            return {
-                timerEnabled,
-                isDailyEnabled,
-                description,
-                time: {
-                    days,
-                    hours,
-                    minutes
-                },
-                trackedApp: {
-                    name: this.selectedApp.name
-                }
-            };
-        }
-
-        return {
+        // Dati base della task
+        const taskData = {
             timerEnabled,
             isDailyEnabled,
             description,
@@ -393,6 +286,9 @@ export default class TaskSettingsPopup {
                 minutes
             }
         };
+
+        console.log('Dati task raccolti:', taskData);
+        return taskData;
     }
 
     /**
@@ -423,74 +319,59 @@ export default class TaskSettingsPopup {
     }
 
     /**
-     * Inizializzo gli aggiornamenti periodici per le app tracciate
+     * Mostra il popup di impostazioni della task
+     * @param {Object|HTMLElement} params - Parametri o elemento target (per retrocompatibilità)
      */
-    startAppUpdates() {
-        // Aggiorna il tempo dell'app tracciata ogni 30 secondi
-        this.appUpdateInterval = setInterval(() => {
-            this.updateTrackedAppTime();
-        }, 30000);
+    show(params) {
+        // Supporto per vecchie chiamate
+        let targetIcon, taskId, taskName, timeData;
 
-        // Aggiorna subito il tempo dell'app
-        this.updateTrackedAppTime();
-    }
+        if (params instanceof HTMLElement) {
+            // Vecchio formato: show(targetIcon)
+            targetIcon = params;
+            taskId = window.activeTaskId;
+        } else {
+            // Nuovo formato: show({targetIcon, taskId, taskName, timeData})
+            targetIcon = params.targetIcon;
+            taskId = params.taskId || window.activeTaskId;
+            taskName = params.taskName;
+            timeData = params.timeData;
+        }
 
-    /**
-     * Aggiorna il tempo dell'app tracciata nella barra laterale
-     */
-    updateTrackedAppTime() {
-        // Verifica se è presente un'app tracciata
-        if (!this.selectedApp || !this.selectedApp.name) return;
+        // Memorizza l'ID della task corrente
+        window.currentEditingTaskId = taskId;
 
-        // Ottieni le informazioni aggiornate sull'app
-        if (window.appTracker) {
-            window.appTracker.getRunningApps()
-                .then(stats => {
-                    // Cerca l'app tracciata nei dati aggiornati
-                    const appData = stats[this.selectedApp.name];
-                    if (appData) {
-                        // Aggiorna il tempo dell'app nel popup e nella barra laterale
-                        this.selectedApp.formattedTime = appData.formattedTime;
-                        this.selectedApp.running = appData.isRunning;
+        console.log("TaskSettingsPopup.show - taskId:", taskId);
 
-                        // Aggiorna l'elemento nella barra laterale
-                        const trackedAppItem = document.getElementById('trackedAppItem');
-                        if (trackedAppItem) {
-                            const infoValue = trackedAppItem.querySelector('.info-value');
-                            if (infoValue) {
-                                infoValue.textContent = appData.formattedTime;
-                            }
-                        }
+        if (!this.popup) {
+            this.createPopup();
+        }
+
+        // Aggiorna il titolo
+        if (taskName) {
+            const titleElement = this.popup.querySelector('.popup-title');
+            if (titleElement) {
+                titleElement.textContent = taskName;
+            }
+        }
+
+        // Popola i campi del form con i dati della task
+        if (taskId) {
+            window.databaseService.getTask(taskId)
+                .then(task => {
+                    if (task) {
+                        console.log("Task caricata:", task);
+                        // Popola i campi del form
+                        this.populateTaskData(task);
                     }
                 })
                 .catch(error => {
-                    console.error('Errore nell\'aggiornamento del tempo dell\'app:', error);
+                    console.error('Errore nel recupero della task:', error);
                 });
         }
-    }
-
-    /**
-     * Ferma gli aggiornamenti periodici dell'app tracciata
-     */
-    stopAppUpdates() {
-        if (this.appUpdateInterval) {
-            clearInterval(this.appUpdateInterval);
-            this.appUpdateInterval = null;
-        }
-    }
-
-    /**
-     * Mostra il popup
-     * @param {HTMLElement} targetIcon L'elemento rispetto a cui posizionare il popup
-     */
-    show(targetIcon) {
-        if (!this.popup) return;
 
         this.popup.style.display = 'block';
         this.positionPopup(targetIcon);
-
-        // Avvia gli aggiornamenti per l'app tracciata
-        this.startAppUpdates();
     }
 
     /**
@@ -498,22 +379,20 @@ export default class TaskSettingsPopup {
      */
     hide() {
         if (!this.popup) return;
-
         this.popup.style.display = 'none';
-
-        // Ferma gli aggiornamenti per l'app tracciata
-        this.stopAppUpdates();
     }
 
     /**
      * Attiva/disattiva la visibilità del popup
-     * @param {HTMLElement} targetIcon L'elemento rispetto a cui posizionare il popup
+     * @param {HTMLElement|Object} params L'elemento rispetto a cui posizionare il popup o un oggetto con i parametri
      */
-    toggle(targetIcon) {
-        if (!this.popup) return;
+    toggle(params) {
+        if (!this.popup) {
+            this.createPopup();
+        }
 
         if (this.popup.style.display === 'none' || !this.popup.style.display) {
-            this.show(targetIcon);
+            this.show(params);
         } else {
             this.hide();
         }
@@ -529,239 +408,183 @@ export default class TaskSettingsPopup {
     }
 
     /**
-     * Inizializza i gestori degli eventi per la sezione Track App
+     * Mostra una notifica all'utente
+     * @param {string} message - Messaggio da mostrare
+     * @param {string} type - Tipo di notifica (info, success, warning, error)
      */
-    initTrackAppSection() {
-        const trackAppRow = document.getElementById('trackAppRow');
-        if (trackAppRow) {
-            trackAppRow.addEventListener('click', (event) => {
-                event.stopPropagation();
-                console.log('Click su Track App');
-
-                // Nascondi la riga Track App e mostra il dropdown
-                trackAppRow.style.display = 'none';
-                document.getElementById('appDropdownRow').style.display = 'flex';
-
-                // Carica le app attive
-                this.loadActiveApps();
-            });
-        }
-
-        // Inizializza il pulsante di chiusura del dropdown
-        const closeAppDropdownBtn = document.getElementById('closeAppDropdownBtn');
-        if (closeAppDropdownBtn) {
-            closeAppDropdownBtn.addEventListener('click', (event) => {
-                event.stopPropagation();
-                console.log('Chiusura dropdown app');
-
-                // Nascondi il dropdown e mostra la riga Track App
-                document.getElementById('appDropdownRow').style.display = 'none';
-                trackAppRow.style.display = 'flex';
-            });
-        }
-
-        // Inizializza il pulsante di rimozione dell'app selezionata
-        const removeAppBtn = document.getElementById('removeAppBtn');
-        if (removeAppBtn) {
-            removeAppBtn.addEventListener('click', (event) => {
-                event.stopPropagation();
-                console.log('Rimozione app selezionata');
-
-                // Rimuovi l'app selezionata
-                this.selectedApp = null;
-
-                // Rimuovi l'app dalla barra laterale
-                this.removeAppFromSidebar();
-
-                // Nascondi la riga dell'app selezionata e mostra la riga Track App
-                document.getElementById('selectedAppRow').style.display = 'none';
-                trackAppRow.style.display = 'flex';
-
-                // Resetta la variabile globale
-                if (typeof window.trackedAppName !== 'undefined') {
-                    window.trackedAppName = null;
-                }
-            });
+    showNotification(message, type = 'info') {
+        if (window.showNotification) {
+            window.showNotification(message, type);
+        } else {
+            console.log(`Notifica (${type}): ${message}`);
+            // Fallback semplice se la funzione globale non è disponibile
+            alert(message);
         }
     }
 
     /**
-     * Carica le app attive dal sistema
+     * Popola i campi del form con i dati della task esistente
+     * @param {Object} task - Dati della task
      */
-    loadActiveApps() {
-        const appList = document.getElementById('appList');
-
-        // Verifica che l'API appTracker sia disponibile
-        if (!window.appTracker) {
-            appList.innerHTML = '<div class="app-list-error">API appTracker non disponibile</div>';
-            return;
-        }
-
-        // Mostra il messaggio di caricamento
-        appList.innerHTML = '<div class="app-list-loading">Caricamento app in corso...</div>';
-
-        // Carica le app attive
-        window.appTracker.getRunningApps()
-            .then(stats => {
-                // Mostra solo le app in esecuzione
-                const activeApps = Object.entries(stats)
-                    .filter(([_, appData]) => appData.isRunning)
-                    .sort((a, b) => a[0].localeCompare(b[0])); // Ordina per nome
-
-                if (activeApps.length === 0) {
-                    appList.innerHTML = '<div class="app-list-empty">Nessuna app attiva rilevata</div>';
-                    return;
-                }
-
-                // Crea gli elementi della lista
-                appList.innerHTML = '';
-                activeApps.forEach(([appName, appData]) => {
-                    const appItem = document.createElement('div');
-                    appItem.className = 'app-item';
-
-                    appItem.innerHTML = `
-                        <div class="app-item-icon">
-                            <i data-lucide="app-window"></i>
-                        </div>
-                        <div class="app-item-details">
-                            <div class="app-item-name">${appName}</div>
-                            <div class="app-item-time">${appData.formattedTime}</div>
-                        </div>
-                    `;
-
-                    // Aggiungi il click handler
-                    appItem.addEventListener('click', () => {
-                        this.selectApp(appName, appData);
-                    });
-
-                    appList.appendChild(appItem);
-                });
-
-                // Inizializza le icone
-                if (window.lucide) {
-                    lucide.createIcons();
-                }
-            })
-            .catch(error => {
-                console.error('Errore nel caricamento delle app:', error);
-                appList.innerHTML = `<div class="app-list-error">Errore: ${error.message}</div>`;
-            });
-    }
-
-    /**
-     * Seleziona un'app per il tracciamento
-     * @param {string} appName Nome dell'app selezionata
-     * @param {Object} appData Dati dell'app selezionata
-     */
-    selectApp(appName, appData) {
-        console.log('App selezionata:', appName);
-
-        // Salva l'app selezionata
-        this.selectedApp = {
-            name: appName,
-            formattedTime: "0h 0m 0s", // Tempo iniziale a zero
-            running: true
-        };
-
-        // Aggiorna l'UI del popup
-        const selectedAppName = document.getElementById('selectedAppName');
-        if (selectedAppName) {
-            selectedAppName.textContent = appName;
-        }
-
-        // Nascondi il dropdown e mostra la riga dell'app selezionata
-        document.getElementById('appDropdownRow').style.display = 'none';
-        document.getElementById('selectedAppRow').style.display = 'flex';
-
-        // Aggiungi l'app selezionata alla barra laterale
-        this.addAppToSidebar(appName, { formattedTime: "0h 0m 0s", isRunning: true });
-
-        // Assicurati che la variabile globale venga aggiornata
-        if (typeof window.trackedAppName !== 'undefined') {
-            window.trackedAppName = appName;
-        }
-    }
-
-    /**
-     * Aggiunge l'app selezionata alla barra laterale sinistra
-     * @param {string} appName Nome dell'app
-     * @param {Object} appData Dati dell'app
-     */
-    addAppToSidebar(appName, appData) {
-        // Trova la info-container nella barra laterale
-        const infoContainer = document.querySelector('.info-container');
-        if (!infoContainer) {
-            console.error('Info container non trovato nella barra laterale');
-            return;
-        }
-
-        // Verifica se esiste già una sezione TRACKED APP
-        let trackedAppHeader = document.getElementById('trackedAppHeader');
-        if (!trackedAppHeader) {
-            // Crea una nuova intestazione per le app tracciate
-            trackedAppHeader = document.createElement('h3');
-            trackedAppHeader.id = 'trackedAppHeader';
-            trackedAppHeader.className = 'info-header';
-            trackedAppHeader.textContent = 'TRACKED APP';
-
-            // Aggiungi l'header dopo la sezione PRIORITY
-            const priorityHeader = document.getElementById('priorityHeader');
-            if (priorityHeader) {
-                // Trova l'ultimo elemento della sezione PRIORITY
-                const lastPriorityElement = document.getElementById('basicFilter');
-                if (lastPriorityElement) {
-                    // Inserisci l'intestazione dopo l'ultimo elemento della sezione PRIORITY
-                    lastPriorityElement.after(trackedAppHeader);
-                } else {
-                    // Fallback: inserisci alla fine del container
-                    infoContainer.appendChild(trackedAppHeader);
-                }
-            } else {
-                // Fallback: inserisci alla fine del container
-                infoContainer.appendChild(trackedAppHeader);
+    populateTaskData(task) {
+        // Imposta il toggle Giornaliero
+        const dailyToggle = document.getElementById('dailyToggle');
+        if (dailyToggle) {
+            dailyToggle.checked = !!task.is_daily;
+            if (typeof window.isDailyEnabled !== 'undefined') {
+                window.isDailyEnabled = !!task.is_daily;
             }
         }
 
-        // Rimuovi eventuali app tracciate esistenti
-        const existingTrackedApp = document.getElementById('trackedAppItem');
-        if (existingTrackedApp) {
-            existingTrackedApp.remove();
+        // Imposta timer
+        const timerToggle = document.getElementById('timerToggle');
+        const timerLabel = document.getElementById('timerLabel');
+        const timerDisplay = document.getElementById('timerDisplay');
+        if (timerToggle && timerLabel && timerDisplay) {
+            const timerEnabled = !!task.timer_enabled;
+            timerToggle.checked = timerEnabled;
+
+            if (timerEnabled) {
+                timerLabel.style.display = 'none';
+                timerDisplay.style.display = 'inline';
+                if (window.updateTimerState) {
+                    window.updateTimerState(true);
+                }
+            } else {
+                timerLabel.style.display = 'inline';
+                timerDisplay.style.display = 'none';
+            }
         }
 
-        // Crea l'elemento per l'app tracciata
-        const trackedAppItem = document.createElement('div');
-        trackedAppItem.id = 'trackedAppItem';
-        trackedAppItem.className = 'info-item';
+        // Imposta descrizione
+        const taskDescription = document.getElementById('taskDescription');
+        const addDescriptionRow = document.getElementById('addDescriptionRow');
+        const descriptionRow = document.getElementById('descriptionRow');
 
-        trackedAppItem.innerHTML = `
-            <i data-lucide="app-window" class="icon-app-window"></i>
-            <span>${appName}</span>
-            <span class="info-value">${appData.formattedTime}</span>
-        `;
+        if (taskDescription && addDescriptionRow && descriptionRow) {
+            if (task.description) {
+                taskDescription.value = task.description;
+                addDescriptionRow.style.display = 'none';
+                descriptionRow.style.display = 'flex';
 
-        // Inserisci l'elemento dopo l'intestazione TRACKED APP
-        trackedAppHeader.after(trackedAppItem);
+                if (typeof window.currentTaskDescription !== 'undefined') {
+                    window.currentTaskDescription = task.description;
+                }
+            } else {
+                taskDescription.value = '';
+                addDescriptionRow.style.display = 'flex';
+                descriptionRow.style.display = 'none';
 
-        // Inizializza le icone Lucide
-        if (window.lucide) {
-            lucide.createIcons();
+                if (typeof window.currentTaskDescription !== 'undefined') {
+                    window.currentTaskDescription = '';
+                }
+            }
         }
+
+        // Imposta tempo
+        if (task.time_end_task) {
+            const totalMinutes = task.time_end_task;
+            const days = Math.floor(totalMinutes / (24 * 60));
+            const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+            const minutes = totalMinutes % 60;
+
+            const dayInput = document.getElementById('taskDays');
+            const hourInput = document.getElementById('taskHours');
+            const minuteInput = document.getElementById('taskMinutes');
+
+            if (dayInput && hourInput && minuteInput) {
+                // Solo se c'è un valore effettivo di tempo, mostra la sezione
+                if (days > 0 || hours > 0 || minutes > 0) {
+                    dayInput.value = days;
+                    hourInput.value = hours;
+                    minuteInput.value = minutes;
+
+                    // Nascondi "Aggiungi tempo" e mostra i campi del tempo
+                    const addTimeRow = document.getElementById('addTimeRow');
+                    const timeSettingsRow = document.getElementById('timeSettingsRow');
+
+                    if (addTimeRow && timeSettingsRow) {
+                        addTimeRow.style.display = 'none';
+                        timeSettingsRow.style.display = 'flex';
+                    }
+
+                    // Aggiorna le variabili globali
+                    if (typeof window.savedTaskDays !== 'undefined') window.savedTaskDays = days;
+                    if (typeof window.savedTaskHours !== 'undefined') window.savedTaskHours = hours;
+                    if (typeof window.savedTaskMinutes !== 'undefined') window.savedTaskMinutes = minutes;
+                }
+            }
+        }
+
+        console.log('Form popolato con i dati della task:', task);
     }
 
     /**
-     * Rimuove l'app tracciata dalla barra laterale
+     * Salva le impostazioni della task
      */
-    removeAppFromSidebar() {
-        // Rimuovi l'app tracciata
-        const trackedAppItem = document.getElementById('trackedAppItem');
-        if (trackedAppItem) {
-            trackedAppItem.remove();
+    saveSettings() {
+        console.log('=== saveSettings chiamato nel popup ===');
+        // Ottiene i valori dai campi del popup
+        const taskDays = parseInt(document.getElementById('taskDays').value) || 0;
+        const taskHours = parseInt(document.getElementById('taskHours').value) || 0;
+        const taskMinutes = parseInt(document.getElementById('taskMinutes').value) || 0;
+        const isDailyEnabled = document.getElementById('dailyToggle').checked;
+        const timerEnabled = document.getElementById('timerToggle').checked;
+        const taskDescription = document.getElementById('taskDescription').value.trim();
+
+        console.log(`Giorni: ${taskDays}, Ore: ${taskHours}, Minuti: ${taskMinutes}`);
+        console.log(`Giornaliera: ${isDailyEnabled}, Timer: ${timerEnabled}`);
+        console.log(`Descrizione: ${taskDescription}`);
+
+        // Salva i valori nelle variabili globali per essere usati durante la creazione della task
+        window.savedTaskDays = taskDays;
+        window.savedTaskHours = taskHours;
+        window.savedTaskMinutes = taskMinutes;
+        window.isDailyEnabled = isDailyEnabled;
+        window.timerEnabled = timerEnabled;
+        window.currentTaskDescription = taskDescription;
+
+        // Importante: Se c'è almeno un valore di tempo, imposta timeSettingsSaved a true
+        const hasSomeTime = taskDays > 0 || taskHours > 0 || taskMinutes > 0;
+        window.timeSettingsSaved = hasSomeTime;
+
+        console.log(`Time settings saved: ${window.timeSettingsSaved}`);
+
+        // Se stiamo modificando una task esistente
+        if (window.currentEditingTaskId) {
+            console.log(`Aggiornamento task esistente: ${window.currentEditingTaskId}`);
+
+            // Prepara i dati per l'aggiornamento
+            const taskData = {
+                time_end_task: taskDays * 24 * 60 + taskHours * 60 + taskMinutes,
+                is_daily: isDailyEnabled,
+                timer_enabled: timerEnabled,
+                description: taskDescription
+            };
+
+            // Aggiorna la task
+            window.databaseService.updateTask(window.currentEditingTaskId, taskData)
+                .then(updatedTask => {
+                    console.log('Task aggiornata con successo:', updatedTask);
+
+                    // Aggiorna l'interfaccia utente
+                    if (typeof window.loadTasks === 'function') {
+                        window.loadTasks();
+                    }
+
+                    this.showNotification('Task aggiornata con successo', 'success');
+                })
+                .catch(error => {
+                    console.error('Errore durante l\'aggiornamento della task:', error);
+                    this.showNotification('Errore durante l\'aggiornamento della task', 'error');
+                });
+        } else {
+            console.log('Nessuna task esistente da aggiornare, i dati saranno usati per la prossima task');
+            this.showNotification('Impostazioni salvate per la prossima task', 'success');
         }
 
-        // Verifica se rimuovere anche l'intestazione
-        const trackedAppHeader = document.getElementById('trackedAppHeader');
-        if (trackedAppHeader) {
-            trackedAppHeader.remove();
-        }
+        // Chiudi il popup
+        this.hide();
+        console.log('=== Fine saveSettings ===');
     }
 }

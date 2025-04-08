@@ -13,6 +13,7 @@
 @import 'components/popups.css';
 @import 'components/completed-tasks.css';
 @import 'components/task-settings-popup.css';
+@import 'components/app-tracker.css';
 
 /* Importa utilities e media queries */
 @import 'utilities.css';

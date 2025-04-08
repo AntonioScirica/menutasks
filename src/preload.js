@@ -21,6 +21,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // API per ottenere lo stato corrente del blocco di sospensione
     getAppSuspensionStatus: () => {
         return ipcRenderer.invoke('getAppSuspensionStatus');
+    },
+    // Event listeners per gli eventi di alimentazione e schermo
+    onPowerSuspend: (callback) => {
+        ipcRenderer.on('power-suspend', callback);
+    },
+    onPowerResume: (callback) => {
+        ipcRenderer.on('power-resume', callback);
+    },
+    onScreenLock: (callback) => {
+        ipcRenderer.on('screen-locked', callback);
+    },
+    onScreenUnlock: (callback) => {
+        ipcRenderer.on('screen-unlocked', callback);
+    },
+    // API per controllo diretto dei timer
+    pauseAllTimers: () => {
+        return ipcRenderer.invoke('pauseAllTimers');
+    },
+    resumeAllTimers: () => {
+        return ipcRenderer.invoke('resumeAllTimers');
+    },
+    // Funzione per inviare messaggi di log al processo principale
+    logMessage: (message) => {
+        return ipcRenderer.invoke('logMessage', message);
     }
 });
 
@@ -28,4 +52,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
 contextBridge.exposeInMainWorld('env', {
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_KEY: process.env.SUPABASE_KEY
+});
+
+// Espone funzioni per il tracciamento delle app
+contextBridge.exposeInMainWorld('appTracker', {
+    // Ottieni la lista delle app in esecuzione con i relativi tempi
+    getRunningApps: () => {
+        return ipcRenderer.invoke('get-app-stats');
+    },
+
+    // Forza un aggiornamento dei dati
+    refreshApps: () => {
+        return ipcRenderer.invoke('refresh-app-stats');
+    }
 }); 

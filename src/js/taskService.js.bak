@@ -1,0 +1,83 @@
+/**
+ * Servizio per la gestione delle task e app associate
+ */
+
+// Riferimento al servizio database
+let databaseService = window.databaseService || null;
+
+// Se non è disponibile, attendiamo che venga caricato
+document.addEventListener('DOMContentLoaded', () => {
+    databaseService = window.databaseService || null;
+    console.log('TaskService: DatabaseService disponibile:', databaseService !== null);
+});
+
+/**
+ * Assegna un'app tracciata a una task
+ * @param {number|string} taskId - ID della task
+ * @param {string} appName - Nome dell'app da tracciare
+ */
+function assignAppToTask(taskId, appName) {
+    console.log(`Debug - assignAppToTask chiamato con taskId: ${taskId}, appName: ${appName}`);
+
+    if (!window.appTimerTracker) {
+        console.error('taskService: appTimerTracker non disponibile');
+        return;
+    }
+
+    console.log('Debug - window.appTimerTracker esiste:', window.appTimerTracker);
+
+    // Avvia il timer per l'app da zero
+    window.appTimerTracker.setAppForTask(taskId, appName);
+    console.log(`taskService: App "${appName}" associata alla task ${taskId}`);
+}
+
+/**
+ * Aggiunge o aggiorna una task con app tracciata
+ * @param {Object} taskData - Dati della task
+ * @param {number|string|null} taskId - ID della task (null per creazione)
+ */
+async function saveTaskWithTrackedApp(taskData, taskId = null) {
+    try {
+        console.log('Debug - saveTaskWithTrackedApp chiamato con:', { taskData, taskId });
+
+        // Salva la task nel database
+        let savedTask;
+
+        if (databaseService) {
+            // Se databaseService è disponibile, usa quello
+            if (taskId) {
+                // Aggiornamento
+                savedTask = await databaseService.updateTask(taskId, taskData);
+            } else {
+                // Creazione
+                savedTask = await databaseService.addTask(taskData);
+            }
+        } else {
+            // Altrimenti, crea un oggetto fittizio per i test
+            console.log('Debug - databaseService non disponibile, creo una task fittizia');
+            savedTask = {
+                id: taskId || Date.now().toString(),
+                ...taskData
+            };
+        }
+
+        console.log('Debug - savedTask:', savedTask);
+        console.log('Debug - taskData.trackedApp:', taskData.trackedApp);
+
+        // Se la task ha un'app tracciata, avvia il timer
+        if (savedTask && taskData.trackedApp && taskData.trackedApp.name) {
+            console.log(`Debug - Avvio timer per app tracciata: ${taskData.trackedApp.name}`);
+            assignAppToTask(savedTask.id, taskData.trackedApp.name);
+        } else {
+            console.log('Debug - Non è stata trovata un\'app tracciata per la task');
+        }
+
+        return savedTask;
+    } catch (error) {
+        console.error('Errore durante il salvataggio della task con app tracciata:', error);
+        throw error;
+    }
+}
+
+// Rendi la funzione disponibile globalmente
+window.saveTaskWithTrackedApp = saveTaskWithTrackedApp; 

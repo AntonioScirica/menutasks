@@ -1,11 +1,20 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, powerSaveBlocker, powerMonitor } = require('electron');
 const { menubar } = require('menubar');
 const path = require('path');
 require('electron-reload')(__dirname);
 require('dotenv').config();
 
+// Importa il tracker delle app
+const AppTracker = require('./app-tracker');
+
 // Variabile per memorizzare l'ID del blocco di risparmio energetico
 let powerSaveBlockerId = null;
+
+// Stato dei timer prima della sospensione o del blocco
+let pausedTimerState = false;
+
+// Inizializza il tracker delle app
+const appTracker = new AppTracker();
 
 // Gestisce il comportamento quando l'app è pronta
 if (process.platform === 'darwin') {
@@ -71,6 +80,46 @@ mb.on('ready', () => {
 
     // Attiva il blocco di risparmio energetico all'avvio per i timer
     preventAppSuspension();
+
+    // Avvia il tracker delle app
+    appTracker.startTracking();
+
+    // Configura i listener per gli eventi di powerMonitor
+    powerMonitor.on('suspend', () => {
+        if (mb.window) {
+            console.log('Sistema in standby: richiesta pausa dei timer');
+            pausedTimerState = true;
+            mb.window.webContents.send('power-suspend');
+        }
+    });
+
+    powerMonitor.on('resume', () => {
+        if (mb.window) {
+            console.log('Sistema riattivato: richiesta ripresa dei timer');
+            if (pausedTimerState) {
+                mb.window.webContents.send('power-resume');
+                pausedTimerState = false;
+            }
+        }
+    });
+
+    powerMonitor.on('lock-screen', () => {
+        if (mb.window) {
+            console.log('Schermo bloccato: richiesta pausa dei timer');
+            pausedTimerState = true;
+            mb.window.webContents.send('screen-locked');
+        }
+    });
+
+    powerMonitor.on('unlock-screen', () => {
+        if (mb.window) {
+            console.log('Schermo sbloccato: richiesta ripresa dei timer');
+            if (pausedTimerState) {
+                mb.window.webContents.send('screen-unlocked');
+                pausedTimerState = false;
+            }
+        }
+    });
 });
 
 // Funzione per prevenire la sospensione dell'app
@@ -110,6 +159,164 @@ ipcMain.handle('getAppSuspensionStatus', (event) => {
         active: powerSaveBlockerId !== null,
         id: powerSaveBlockerId
     };
+});
+
+// Handler per controllo diretto dei timer
+ipcMain.handle('pauseAllTimers', async (event) => {
+    console.log('Richiesta di pausa di tutti i timer ricevuta dal main process');
+    try {
+        // Esegui l'iniezione di codice nel renderer per interagire direttamente con timerService
+        await mb.window.webContents.executeJavaScript(`
+            (function() {
+                console.log('Esecuzione pauseAllTimers via main process');
+                if (typeof saveAllTimersState === 'function') {
+                    saveAllTimersState();
+                    console.log('Stato timer salvato');
+                }
+                
+                // Tenta di accedere a timerService tramite metodi diversi
+                let timersFound = false;
+                
+                // Metodo 1: tramite window.timerService
+                if (typeof window.timerService !== 'undefined') {
+                    console.log('timerService trovato come proprietà window');
+                    const allTimers = window.timerService.getAllTimers();
+                    const activeTimerCount = Object.keys(allTimers).length;
+                    console.log(\`\${activeTimerCount} timer attivi trovati\`);
+                    
+                    // Salva lo stato di tutti i timer attivi
+                    for (const taskId in allTimers) {
+                        const timer = allTimers[taskId];
+                        if (timer.running) {
+                            window.timerService.pauseTimer(taskId);
+                            console.log(\`Timer \${taskId} messo in pausa\`);
+                        }
+                    }
+                    timersFound = true;
+                }
+                
+                // Metodo 2: tramite activeTimers globale
+                if (typeof window.activeTimers !== 'undefined' && !timersFound) {
+                    console.log('activeTimers trovato come proprietà window');
+                    window.activeTimers.forEach((timer, taskId) => {
+                        if (timer.isRunning) {
+                            // Ferma il timer
+                            clearInterval(timer.interval);
+                            clearInterval(timer.saveInterval);
+                            timer.isRunning = false;
+                            console.log(\`Timer \${taskId} messo in pausa via activeTimers\`);
+                        }
+                    });
+                    timersFound = true;
+                }
+                
+                // Metodo 3: tramite variabili globali
+                if (typeof activeTimers !== 'undefined' && !timersFound) {
+                    console.log('activeTimers trovato come variabile globale');
+                    activeTimers.forEach((timer, taskId) => {
+                        if (timer.isRunning) {
+                            // Ferma il timer
+                            clearInterval(timer.interval);
+                            clearInterval(timer.saveInterval);
+                            timer.isRunning = false;
+                            console.log(\`Timer \${taskId} messo in pausa via variabile activeTimers\`);
+                        }
+                    });
+                    timersFound = true;
+                }
+                
+                return timersFound ? 'Timer pausati con successo' : 'Nessun timer trovato';
+            })();
+        `);
+
+        return { success: true, message: 'Comando di pausa timer inviato' };
+    } catch (error) {
+        console.error('Errore nell\'esecuzione della pausa timer:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('resumeAllTimers', async (event) => {
+    console.log('Richiesta di ripresa di tutti i timer ricevuta dal main process');
+    try {
+        // Esegui l'iniezione di codice nel renderer per interagire direttamente con timerService
+        await mb.window.webContents.executeJavaScript(`
+            (function() {
+                console.log('Esecuzione resumeAllTimers via main process');
+                
+                // Tenta di accedere a timerService tramite metodi diversi
+                let timersFound = false;
+                
+                // Metodo 1: tramite window.timerService
+                if (typeof window.timerService !== 'undefined') {
+                    console.log('timerService trovato come proprietà window');
+                    const allTimers = window.timerService.getAllTimers();
+                    const timerCount = Object.keys(allTimers).length;
+                    console.log(\`\${timerCount} timer trovati\`);
+                    
+                    // Riprendi tutti i timer pausati
+                    for (const taskId in allTimers) {
+                        const timer = allTimers[taskId];
+                        if (!timer.running && !timer.completed) {
+                            window.timerService.resumeTimer(taskId);
+                            console.log(\`Timer \${taskId} ripreso\`);
+                        }
+                    }
+                    timersFound = true;
+                }
+                
+                // Metodo 2: tramite activeTimers globale
+                if (typeof window.activeTimers !== 'undefined' && !timersFound) {
+                    console.log('activeTimers trovato come proprietà window');
+                    window.activeTimers.forEach((timer, taskId) => {
+                        if (!timer.isRunning) {
+                            // Riavvia il timer
+                            timer.lastUpdateTimestamp = Date.now();
+                            timer.isRunning = true;
+                            timer.interval = setInterval(() => { /* logica del timer */ }, 1000);
+                            timer.saveInterval = setInterval(() => { /* logica di salvataggio */ }, 300000);
+                            console.log(\`Timer \${taskId} ripreso via activeTimers\`);
+                        }
+                    });
+                    timersFound = true;
+                }
+                
+                // Metodo 3: tramite variabili globali
+                if (typeof activeTimers !== 'undefined' && !timersFound) {
+                    console.log('activeTimers trovato come variabile globale');
+                    activeTimers.forEach((timer, taskId) => {
+                        if (!timer.isRunning) {
+                            // Riavvia il timer
+                            timer.lastUpdateTimestamp = Date.now();
+                            timer.isRunning = true;
+                            timer.interval = setInterval(() => { /* logica del timer */ }, 1000);
+                            timer.saveInterval = setInterval(() => { /* logica di salvataggio */ }, 300000);
+                            console.log(\`Timer \${taskId} ripreso via variabile activeTimers\`);
+                        }
+                    });
+                    timersFound = true;
+                }
+                
+                if (typeof synchronizeAllTimers === 'function') {
+                    synchronizeAllTimers();
+                    console.log('Timer sincronizzati dopo ripresa');
+                }
+                
+                return timersFound ? 'Timer ripresi con successo' : 'Nessun timer trovato';
+            })();
+        `);
+
+        return { success: true, message: 'Comando di ripresa timer inviato' };
+    } catch (error) {
+        console.error('Errore nell\'esecuzione della ripresa timer:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// Handler per i messaggi di log
+ipcMain.handle('logMessage', (event, message) => {
+    console.log(message);
+    return { success: true };
 });
 
 // Intercetta l'evento prima che la finestra venga mostrata
@@ -181,8 +388,26 @@ app.on('window-all-closed', () => {
     }
 });
 
-// Rimuovi le shortcut e il blocco risparmio energetico quando l'app viene chiusa
+// Configura gli handler IPC per il tracker delle app
+ipcMain.handle('get-app-stats', () => {
+    return appTracker.getStats();
+});
+
+ipcMain.handle('refresh-app-stats', async () => {
+    await appTracker.updateAppTracking();
+    return appTracker.getStats();
+});
+
+// Quando l'app sta per chiudersi, ferma il tracking
 app.on('will-quit', () => {
+    // Rimuovi tutte le shortcuts registrate
     globalShortcut.unregisterAll();
-    releaseAppSuspension();
+
+    // Ferma il tracker delle app
+    appTracker.stopTracking();
+
+    // Rimuovi il blocco di risparmio energetico se attivo
+    if (powerSaveBlockerId !== null) {
+        releaseAppSuspension();
+    }
 }); 

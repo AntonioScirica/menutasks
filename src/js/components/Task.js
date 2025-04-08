@@ -607,6 +607,16 @@ class TaskComponent {
             // Se il task è stato completato, ferma eventuali timer
             if (newCompletionState) {
                 this.timerService.stopTimer(task.id);
+
+                // Ferma anche il timer dell'app tracciata, se presente
+                if (window.appTimerTracker) {
+                    window.appTimerTracker.stopTimer(task.id);
+                }
+            } else {
+                // Se il task è stato riattivato, riprendi il timer dell'app tracciata
+                if (window.appTimerTracker) {
+                    window.appTimerTracker.resumeTimer(task.id);
+                }
             }
         } catch (error) {
             console.error('TaskComponent: Errore durante l\'aggiornamento del completamento', error);

@@ -1,0 +1,106 @@
+/* Stili per il tracker delle app */
+.app-tracker-container {
+  margin-top: 20px;
+  padding: 0 10px;
+}
+
+.app-tracker-title {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.app-tracker-title i {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+}
+
+.app-stat-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  margin: 4px 0;
+  border-radius: 4px;
+  background-color: var(--bg-secondary);
+  transition: all 0.2s ease;
+}
+
+.app-stat-item:hover {
+  background-color: var(--bg-hover);
+}
+
+.app-name-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.app-icon {
+  color: var(--accent-color);
+  display: flex;
+  align-items: center;
+}
+
+.app-name {
+  font-weight: 500;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+.app-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
+  margin-left: 10px;
+  display: flex;
+  align-items: center;
+}
+
+.app-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 5px;
+}
+
+.running {
+  background-color: var(--success-color);
+}
+
+.closed {
+  background-color: var(--text-disabled);
+}
+
+.app-tracker-refresh {
+  color: var(--text-secondary);
+  font-size: 10px;
+  text-align: right;
+  margin-top: 8px;
+  font-style: italic;
+}
+
+.app-tracker-refresh-button {
+  background: none;
+  border: none;
+  color: var(--accent-color);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 5px;
+}
+
+.app-tracker-refresh-button:hover {
+  text-decoration: underline;
+} 

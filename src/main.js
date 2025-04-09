@@ -161,6 +161,45 @@ ipcMain.handle('getAppSuspensionStatus', (event) => {
     };
 });
 
+// Handler per ottenere le app attualmente in esecuzione
+ipcMain.handle('getActiveApps', async (event) => {
+    try {
+        const runningApps = await appTracker.getRunningApps();
+        console.log('App attive ottenute:', runningApps.length);
+        return runningApps;
+    } catch (error) {
+        console.error('Errore nell\'ottenere le app attive:', error);
+        return [];
+    }
+});
+
+// Handler per ottenere l'app in primo piano
+ipcMain.handle('getForegroundApp', async (event) => {
+    try {
+        const foregroundApp = await appTracker.getForegroundApp();
+        console.log('App in primo piano:', foregroundApp);
+
+        // Se non è stato possibile ottenere l'app in primo piano tramite AppleScript,
+        // verifica se la finestra dell'app è in primo piano
+        if (!foregroundApp && mb.window && mb.window.isFocused()) {
+            console.log('Fallback: l\'app in primo piano è l\'app stessa');
+            return 'Menubar App'; // Nome dell'app corrente
+        }
+
+        return foregroundApp;
+    } catch (error) {
+        console.error('Errore nell\'ottenere l\'app in primo piano:', error);
+        return null;
+    }
+});
+
+// Handler per controllare se il PC è attivo
+ipcMain.handle('isSystemActive', (event) => {
+    // In Electron non c'è un modo diretto per verificare lo stato del sistema
+    // Utilizziamo una variabile di stato che viene aggiornata dagli eventi di powerMonitor
+    return !pausedTimerState; // Se non ci sono eventi di sospensione o blocco, il sistema è attivo
+});
+
 // Handler per controllo diretto dei timer
 ipcMain.handle('pauseAllTimers', async (event) => {
     console.log('Richiesta di pausa di tutti i timer ricevuta dal main process');
@@ -396,6 +435,44 @@ ipcMain.handle('get-app-stats', () => {
 ipcMain.handle('refresh-app-stats', async () => {
     await appTracker.updateAppTracking();
     return appTracker.getStats();
+});
+
+// Handler per verificare se una specifica app è attiva in primo piano
+ipcMain.handle('isAppActive', async (event, appName) => {
+    try {
+        if (!appName) return false;
+
+        const foregroundApp = await appTracker.getForegroundApp();
+
+        // Verifica che foregroundApp sia una stringa valida
+        if (!foregroundApp || typeof foregroundApp !== 'string') {
+            return false;
+        }
+
+        const isActive = foregroundApp.toLowerCase().includes(appName.toLowerCase());
+
+        // Inizializza il registro degli stati se non esiste
+        if (!appTracker.activeAppStates) {
+            appTracker.activeAppStates = new Map();
+        }
+
+        // Log solo quando lo stato cambia, e limita la frequenza
+        const now = Date.now();
+        const lastStateChange = appTracker.activeAppStates.get(appName);
+        const stateChanged = lastStateChange?.isActive !== isActive;
+        const shouldLog = stateChanged &&
+            (!lastStateChange?.timestamp || now - lastStateChange.timestamp > 10000);
+
+        if (shouldLog) {
+            console.log(`App ${appName}: stato cambiato a ${isActive ? 'attivo' : 'inattivo'}`);
+            appTracker.activeAppStates.set(appName, { isActive, timestamp: now });
+        }
+
+        return isActive;
+    } catch (error) {
+        console.error('Errore nel verificare se l\'app è attiva:', error);
+        return false;
+    }
 });
 
 // Quando l'app sta per chiudersi, ferma il tracking

@@ -8,9 +8,6 @@ class AppTracker {
         this.trackingData = {};
         this.dataFilePath = path.join(app.getPath('userData'), 'app-tracking-data.json');
         this.updateInterval = null;
-        this.foregroundApp = null;
-        this.lastRunningAppsLog = null;
-        this.logTimestamp = null;
     }
 
     // Carica dati esistenti
@@ -41,59 +38,12 @@ class AppTracker {
 
             exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
                 if (error) {
-                    console.error('Errore nell\'ottenere le app in esecuzione:', error);
-                    // Restituisce un array vuoto invece di rejettare
-                    resolve([]);
+                    reject(error);
                     return;
                 }
 
-                // Assicuriamo che lo stdout sia una stringa non vuota
-                if (!stdout || !stdout.trim()) {
-                    console.warn('Nessuna app in esecuzione trovata');
-                    resolve([]);
-                    return;
-                }
-
-                // Splitta il risultato e pulisci gli spazi
-                const apps = stdout.trim().split(', ').map(app => app.trim()).filter(app => app);
-
-                // Riduciamo la frequenza dei log - solo una volta ogni 5 minuti o al primo avvio
-                const now = Date.now();
-                if (!this.lastRunningAppsLog || now - this.lastRunningAppsLog > 300000) {
-                    console.log(`App in esecuzione trovate: ${apps.length}`);
-                    this.lastRunningAppsLog = now;
-                }
-
+                const apps = stdout.trim().split(', ');
                 resolve(apps);
-            });
-        });
-    }
-
-    // Ottieni l'app in primo piano
-    getForegroundApp() {
-        return new Promise((resolve, reject) => {
-            const script = 'tell application "System Events" to get name of first process whose frontmost is true';
-
-            exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
-                if (error) {
-                    console.error('Errore nell\'ottenere l\'app in primo piano:', error);
-                    resolve(null);
-                    return;
-                }
-
-                const foregroundApp = stdout.trim();
-
-                // Log solo quando cambia l'app in primo piano
-                if (this.foregroundApp !== foregroundApp) {
-                    // Si può anche limitare ulteriormente il log per essere più sintetico
-                    if (!this.logTimestamp || Date.now() - this.logTimestamp > 10000) {  // Max un log ogni 10 secondi
-                        console.log(`App in primo piano cambiata: ${foregroundApp}`);
-                        this.logTimestamp = Date.now();
-                    }
-                }
-
-                this.foregroundApp = foregroundApp;
-                resolve(foregroundApp);
             });
         });
     }

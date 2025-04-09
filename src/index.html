@@ -2208,7 +2208,27 @@
 
                         // Ottieni esplicitamente lo stato del timer toggle dal DOM
                         const timerToggle = document.getElementById('timerToggle');
-                        const timerEnabled = timerToggle ? timerToggle.checked : false;
+                        let timerEnabled = timerToggle ? timerToggle.checked : false;
+
+                        // Ottieni esplicitamente lo stato daily dal DOM
+                        const dailyToggle = document.getElementById('dailyToggle');
+                        const isDailyChecked = dailyToggle ? dailyToggle.checked : false;
+
+                        // Salva lo stato giornaliero per task principali
+                        newTask.is_daily = isDailyChecked;
+                        console.log('Stato daily:', isDailyChecked ? 'attivo' : 'disattivato');
+
+                        // Aggiungi il campo assigned_to se è stato impostato
+                        if (typeof window.currentAssignedTo !== 'undefined' && window.currentAssignedTo) {
+                            newTask.assigned_to = window.currentAssignedTo;
+                            console.log(`Assegnata a: ${window.currentAssignedTo}`);
+
+                            // Attiva automaticamente il timer se la task ha un programma associato
+                            timerEnabled = true;
+                            console.log('Timer automaticamente attivato per task con app associata');
+                        } else {
+                            console.log('Nessuna assegnazione specificata');
+                        }
 
                         // Salva lo stato e il valore del timer
                         newTask.timer_enabled = timerEnabled;
@@ -2226,14 +2246,6 @@
                             // Se il timer è attivo, non salvare time_end_task
                             console.log('Timer attivo: non verrà considerato il tempo manuale');
                         }
-
-                        // Ottieni esplicitamente lo stato daily dal DOM
-                        const dailyToggle = document.getElementById('dailyToggle');
-                        const isDailyChecked = dailyToggle ? dailyToggle.checked : false;
-
-                        // Salva lo stato giornaliero per task principali
-                        newTask.is_daily = isDailyChecked;
-                        console.log('Stato daily:', isDailyChecked ? 'attivo' : 'disattivato');
 
                         // Ottieni esplicitamente la descrizione dalla textarea
                         const taskDescriptionField = document.getElementById('taskDescription');
@@ -2313,9 +2325,33 @@
                         // Imposta il flag della task creata
                         isTaskCreated = true;
 
-                        // Avvia il timer per la nuova task solo se è stato abilitato
+                        // Avvia il timer per la nuova task se è stato abilitato o ha un programma assegnato
                         if (!parentId && data[0].timer_enabled) {
+                            console.log('Avvio automatico del timer per la task', data[0].id);
                             startTaskTimer(data[0].id);
+
+                            // Se la task ha un programma associato, tenta di verificare se è attualmente in esecuzione
+                            if (data[0].assigned_to) {
+                                console.log(`Task associata a programma: ${data[0].assigned_to}, verifico stato...`);
+
+                                // Verifica se l'app è in esecuzione tramite l'API Electron
+                                if (window.electronAPI && typeof window.electronAPI.isAppActive === 'function') {
+                                    window.electronAPI.isAppActive(data[0].assigned_to)
+                                        .then(isActive => {
+                                            console.log(`Stato app ${data[0].assigned_to}: ${isActive ? 'attiva' : 'non attiva'}`);
+
+                                            // Notifica l'utente dello stato dell'app
+                                            if (!isActive) {
+                                                showStatus(`Timer avviato, ma ${data[0].assigned_to} non è attualmente in primo piano`, 'info', 5000);
+                                            } else {
+                                                showStatus(`Timer avviato per ${data[0].assigned_to}`, 'success', 2000);
+                                            }
+                                        })
+                                        .catch(err => {
+                                            console.error('Errore nella verifica dello stato dell\'app:', err);
+                                        });
+                                }
+                            }
                         }
                     }
 
@@ -4459,116 +4495,159 @@
         // Funzione per avviare il timer per una task specifica
         function startTaskTimer(taskId, initialSecondsValue = null) {
             if (!taskId) {
-                console.error("startTaskTimer: ID task non valido");
+                console.error('ID task non valido per avvio timer');
                 return;
             }
 
-            // Controlla se esiste già un timer attivo per questa task
+            // Controlla se c'è già un timer attivo per questa task
             if (activeTimers.has(taskId)) {
-                console.log(`Timer già attivo per task ${taskId}, non verrà riavviato`);
-                return;
+                console.log(`Timer già attivo per task ${taskId}`);
+                return; // Timer già avviato
             }
 
-            console.log(`Avvio timer per task ${taskId}`);
-
-            // Se abbiamo già un valore iniziale, usa quello
-            if (initialSecondsValue !== null) {
+            // Se non è stato fornito un valore iniziale, cerca nel DB
+            if (initialSecondsValue === null) {
+                // Prima cerca nelle nostre strutture dati
+                getTimerFromLocalStorage(taskId)
+                    .then(seconds => {
+                        if (seconds !== null) {
+                            console.log(`Timer locale trovato per task ${taskId}: ${seconds} secondi`);
+                            createTaskTimer(taskId, seconds);
+                        } else {
+                            // Se non c'è in locale, prova a recuperarlo da Supabase
+                            return getTimerValueFromSupabase(taskId);
+                        }
+                    })
+                    .then(seconds => {
+                        if (seconds !== null) {
+                            console.log(`Timer remoto trovato per task ${taskId}: ${seconds} secondi`);
+                            createTaskTimer(taskId, seconds);
+                        } else {
+                            // Se è la prima volta che avviamo un timer per questa task
+                            createTaskTimer(taskId, 0);
+                        }
+                    })
+                    .catch(err => {
+                        console.error(`Errore nel recupero del timer per task ${taskId}:`, err);
+                        // Fallback: crea un nuovo timer a 0
+                        createTaskTimer(taskId, 0);
+                    });
+            } else {
+                // Se è stato fornito un valore iniziale, usa quello
                 createTaskTimer(taskId, initialSecondsValue);
-                return;
             }
-
-            // Altrimenti, recupera il valore del timer salvato per questa task
-            supabase
-                .from('tasks')
-                .select('timer_seconds, timer_enabled')
-                .eq('id', taskId)
-                .single()
-                .then(({ data, error }) => {
-                    if (error) {
-                        console.error("Errore nel recupero del timer:", error);
-                        return;
-                    }
-
-                    // Verifica che il timer sia effettivamente abilitato
-                    if (!data.timer_enabled) {
-                        console.log(`Timer non abilitato per task ${taskId}, non verrà avviato`);
-                        return;
-                    }
-
-                    // Inizia con i secondi esistenti o 0
-                    const initialSeconds = data && data.timer_seconds ? data.timer_seconds : 0;
-                    console.log(`Timer iniziale per task ${taskId}: ${initialSeconds} secondi`);
-
-                    createTaskTimer(taskId, initialSeconds);
-                })
-                .catch(err => {
-                    console.error("Errore nella query per il timer:", err);
-                });
         }
 
         // Funzione di supporto per creare un oggetto timer
         function createTaskTimer(taskId, initialSeconds) {
-            try {
-                // Crea un oggetto timer per questa task
-                const taskTimer = {
-                    taskId: taskId,
-                    seconds: initialSeconds,
-                    startTimestamp: Date.now(), // Timestamp di inizio/ripresa timer
-                    lastUpdateTimestamp: Date.now(), // Ultimo timestamp in cui abbiamo aggiornato il conteggio
-                    isRunning: true,
-                    interval: setInterval(() => {
-                        // Invece di incrementare semplicemente i secondi, calcola il tempo trascorso
-                        // dal timestamp iniziale o dall'ultimo aggiornamento
-                        const now = Date.now();
-                        const elapsedSeconds = Math.floor((now - taskTimer.lastUpdateTimestamp) / 1000);
+            console.log(`Inizializzazione timer per task ${taskId} con ${initialSeconds} secondi`);
 
-                        // Se è passato almeno un secondo
-                        if (elapsedSeconds > 0) {
-                            // Aggiorna i secondi e il timestamp dell'ultimo aggiornamento
-                            taskTimer.seconds += elapsedSeconds;
-                            taskTimer.lastUpdateTimestamp = now;
+            // Recupera l'app associata alla task
+            getTaskDetails(taskId)
+                .then(taskDetails => {
+                    let associatedApp = taskDetails && taskDetails.assigned_to ? taskDetails.assigned_to : null;
+                    console.log(`App associata a task ${taskId}: ${associatedApp || 'nessuna'}`);
 
-                            // Verifica ogni 30 secondi se è necessario salvare
-                            if (taskTimer.seconds % 30 === 0 || elapsedSeconds > 30) {
-                                if (shouldSaveTimer(taskId, taskTimer.seconds)) {
-                                    // Prima salva localmente
-                                    saveTimerToLocalStorage(taskId, taskTimer.seconds)
-                                        .then(() => {
-                                            // Poi sincronizza con Supabase
-                                            return saveTimerToSupabase(taskId, taskTimer.seconds);
-                                        })
-                                        .then(() => {
-                                            updateSavedState(taskId, taskTimer.seconds);
-                                        })
-                                        .catch(err => {
-                                            console.error(`Errore salvando il timer per task ${taskId}:`, err);
-                                        });
-                                } else {
-                                    console.log(`Saltato salvataggio per task ${taskId}: nessun cambiamento significativo`);
-                                }
-                            }
+                    // Funzione per verificare se l'app è attiva
+                    async function checkAppActive() {
+                        if (!associatedApp) return true; // Se non c'è un'app associata, considera sempre attivo
+
+                        try {
+                            const isActive = await window.electronAPI.isAppActive(associatedApp);
+                            return isActive;
+                        } catch (error) {
+                            console.error(`Errore nel verificare stato app ${associatedApp}:`, error);
+                            return true; // In caso di errore, considera l'app come attiva
                         }
-                    }, 1000),
-                    saveInterval: setInterval(() => {
-                        // Backup salvataggio ogni 5 minuti indipendentemente dai cambiamenti
-                        saveTimerToLocalStorage(taskId, taskTimer.seconds)
-                            .then(() => {
-                                return saveTimerToSupabase(taskId, taskTimer.seconds);
-                            })
-                            .then(() => {
-                                updateSavedState(taskId, taskTimer.seconds);
-                            })
-                            .catch(err => {
-                                console.error(`Errore nel backup del timer per task ${taskId}:`, err);
-                            });
-                    }, 300000) // 5 minuti
-                };
+                    }
 
-                // Salva il timer nella mappa
-                activeTimers.set(taskId, taskTimer);
-                console.log(`Timer avviato correttamente per task ${taskId}`);
-            } catch (err) {
-                console.error("Errore nell'avvio del timer:", err);
+                    let timerElement = null;
+                    let secondsCount = initialSeconds || 0;
+                    let isRunning = true;
+
+                    // Trova o crea l'elemento timer nella UI
+                    const updateTimerDisplay = () => {
+                        if (!timerElement) {
+                            // Cerca l'elemento timer nel DOM
+                            timerElement = document.querySelector(`[data-task-id="${taskId}"] .timer-display`);
+                        }
+
+                        if (timerElement) {
+                            timerElement.textContent = formatSecondsToTime(secondsCount);
+                        }
+                    };
+
+                    // Aggiorna display iniziale
+                    updateTimerDisplay();
+
+                    // Crea intervallo che controlla se l'app è attiva e aggiorna il timer
+                    const timerInterval = setInterval(async () => {
+                        if (!isRunning) return;
+
+                        const isAppActive = await checkAppActive();
+
+                        if (isAppActive) {
+                            // Incrementa solo se l'app è attiva
+                            secondsCount++;
+                            updateTimerDisplay();
+
+                            // Salva lo stato attuale ogni 10 secondi
+                            if (secondsCount % 10 === 0) {
+                                saveTimerState(taskId, secondsCount);
+                            }
+                        } else {
+                            console.log(`Timer non incrementato: app ${associatedApp} non in primo piano`);
+                        }
+                    }, 1000);
+
+                    // Crea oggetto timer con i metodi necessari
+                    const timer = {
+                        taskId,
+                        pause() {
+                            isRunning = false;
+                            console.log(`Timer in pausa per task ${taskId}`);
+                        },
+                        resume() {
+                            isRunning = true;
+                            console.log(`Timer ripreso per task ${taskId}`);
+                        },
+                        stop() {
+                            clearInterval(timerInterval);
+                            activeTimers.delete(taskId);
+                            console.log(`Timer fermato per task ${taskId}`);
+                        },
+                        getSeconds() {
+                            return secondsCount;
+                        },
+                        setSeconds(newSeconds) {
+                            secondsCount = newSeconds;
+                            updateTimerDisplay();
+                            console.log(`Timer impostato a ${newSeconds} secondi per task ${taskId}`);
+                        }
+                    };
+
+                    // Registra il timer in activeTimers
+                    activeTimers.set(taskId, timer);
+                })
+                .catch(err => {
+                    console.error(`Errore nell'inizializzazione del timer per task ${taskId}:`, err);
+                });
+        }
+
+        // Funzione di supporto per ottenere i dettagli della task
+        async function getTaskDetails(taskId) {
+            try {
+                const { data, error } = await supabase
+                    .from('tasks')
+                    .select('*')
+                    .eq('id', taskId)
+                    .single();
+
+                if (error) throw error;
+                return data;
+            } catch (error) {
+                console.error(`Errore nel recupero dettagli task ${taskId}:`, error);
+                return null;
             }
         }
 
@@ -4619,12 +4698,14 @@
                 return Promise.reject(new Error("ID task non valido"));
             }
 
+            console.log(`INIZIO salvataggio timer su Supabase per task ${taskId}: ${seconds} secondi`);
+
             // Controlla che il timer sia ancora abilitato prima di salvare
             try {
                 // Verifica che la task esista ancora e abbia il timer abilitato
                 const { data: taskData, error: checkError } = await supabase
                     .from('tasks')
-                    .select('timer_enabled, completed')
+                    .select('timer_enabled, completed, timer_seconds, assigned_to')
                     .eq('id', taskId)
                     .single();
 
@@ -4632,6 +4713,8 @@
                     console.error(`Errore nella verifica della task ${taskId}:`, checkError);
                     return Promise.reject(checkError);
                 }
+
+                console.log(`Task recuperata: timer_enabled=${taskData.timer_enabled}, completed=${taskData.completed}, timer_seconds=${taskData.timer_seconds}, assigned_to=${taskData.assigned_to}`);
 
                 // Non salvare se la task è completata o il timer è disabilitato
                 if (taskData.completed) {
@@ -4644,7 +4727,8 @@
                     return Promise.resolve({ taskId, seconds, saved: false, reason: 'timer_disabled' });
                 }
 
-                console.log(`DEBUG: Salvando timer per task ${taskId}: ${seconds} secondi`);
+                console.log(`ESECUZIONE UPDATE: Salvando timer per task ${taskId}: ${seconds} secondi (valore precedente: ${taskData.timer_seconds})`);
+
                 const { data, error } = await supabase
                     .from('tasks')
                     .update({ timer_seconds: seconds })
@@ -4656,7 +4740,7 @@
                     return Promise.reject(error);
                 }
 
-                console.log(`DEBUG: Timer salvato con successo per task ${taskId}. Risposta:`, data);
+                console.log(`SUCCESSO: Timer salvato per task ${taskId}: ${seconds} secondi. Risposta:`, data);
                 return Promise.resolve({ taskId, seconds, saved: true, data });
             } catch (error) {
                 console.error(`Eccezione nel salvataggio del timer per task ${taskId}:`, error);
@@ -4787,6 +4871,15 @@
                 .catch(err => {
                     console.error("Errore nell'inizializzazione di IndexedDB:", err);
                 });
+
+            // Inizializza il SessionManager
+            try {
+                const { initSessionManager } = require('./js/services/sessionIntegration');
+                initSessionManager(supabase);
+                console.log("SessionManager inizializzato correttamente");
+            } catch (error) {
+                console.error("Errore nell'inizializzazione di SessionManager:", error);
+            }
 
             // Aggiungi gestore per gli eventi di visibilità del documento
             document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -5355,6 +5448,45 @@
 
         // Variabili per memorizzare le impostazioni di tempo
         // ... existing code ...
+
+        // Funzione per salvare il timer localmente e remotamente
+        function saveTimerState(taskId, seconds) {
+            console.log(`Salvando stato timer per task ${taskId}: ${seconds} secondi`);
+
+            // Salva il timer localmente
+            saveTimerToLocalStorage(taskId, seconds)
+                .then(() => {
+                    console.log(`Timer salvato localmente per task ${taskId}: ${seconds} secondi`);
+                    updateSavedState(taskId, seconds);
+
+                    // Salva anche su Supabase
+                    return saveTimerToSupabase(taskId, seconds);
+                })
+                .then(result => {
+                    if (result && result.saved) {
+                        console.log(`Timer salvato con successo su Supabase per task ${taskId}: ${seconds} secondi`);
+                    } else if (result) {
+                        console.log(`Timer non salvato su Supabase: ${result.reason}`);
+                    }
+                })
+                .catch(err => {
+                    console.error(`Errore nel salvataggio del timer per task ${taskId}:`, err);
+                });
+        }
+
+        // Funzione per formattare i secondi in formato HH:MM:SS
+        function formatSecondsToTime(seconds) {
+            if (typeof seconds !== 'number') {
+                console.warn('formatSecondsToTime: Valore non numerico', seconds);
+                seconds = 0;
+            }
+
+            const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
+            const minutes = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+            const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+
+            return `${hours}:${minutes}:${secs}`;
+        }
     </script>
 </body>
 

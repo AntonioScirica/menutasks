@@ -414,6 +414,13 @@ async function addTask(parentId = null) {
     }
 
     try {
+        // Debug - Log delle variabili globali
+        console.log("=== Inizio creazione nuova task ===");
+        console.log("currentProjectId:", currentProjectId);
+        console.log("window.currentAssignedTo:", window.currentAssignedTo);
+        console.log("tipo di currentAssignedTo:", typeof window.currentAssignedTo);
+        console.log("window.currentTaskDescription:", window.currentTaskDescription);
+
         // Crea una nuova task vuota
         const taskData = {
             project_id: currentProjectId,
@@ -440,8 +447,26 @@ async function addTask(parentId = null) {
             taskData.position = taskItems.length;
         }
 
+        // Aggiungi il campo assigned_to se il valore è disponibile nella variabile globale
+        if (!parentId && typeof window.currentAssignedTo !== 'undefined') {
+            console.log("Controllo campo assigned_to. Valore:", window.currentAssignedTo);
+
+            if (window.currentAssignedTo) {
+                taskData.assigned_to = window.currentAssignedTo;
+                console.log(`Task sarà assegnata a: ${window.currentAssignedTo}`);
+            } else {
+                console.log("Valore assigned_to è vuoto o null");
+            }
+        } else {
+            console.log("Non imposto assigned_to: parentId è presente o variabile non definita");
+        }
+
+        // Log dell'oggetto completo taskData
+        console.log("Dati completi task prima di salvarla:", JSON.stringify(taskData));
+
         // Salva la task nel database
         const newTaskId = await databaseService.createTask(taskData);
+        console.log("Task creata con ID:", newTaskId);
 
         // Crea l'elemento nell'interfaccia
         const taskElement = createTaskElement(newTaskId, '', parentId, [], 'normal', false);
@@ -459,6 +484,8 @@ async function addTask(parentId = null) {
             const basicCount = document.getElementById('basicTasksCount');
             basicCount.textContent = (parseInt(basicCount.textContent) + 1).toString();
         }
+
+        console.log("=== Fine creazione nuova task ===");
 
     } catch (error) {
         console.error('Errore durante la creazione della task:', error);

@@ -45,6 +45,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Funzione per inviare messaggi di log al processo principale
     logMessage: (message) => {
         return ipcRenderer.invoke('logMessage', message);
+    },
+    // API per ottenere le app attive
+    getActiveApps: () => {
+        return ipcRenderer.invoke('getActiveApps');
+    },
+    // API per ottenere l'app in primo piano
+    getForegroundApp: () => {
+        return ipcRenderer.invoke('getForegroundApp');
+    },
+    // API per verificare se il sistema è attivo
+    isSystemActive: () => {
+        return ipcRenderer.invoke('isSystemActive');
+    },
+    // Funzione per verificare se un'app specifica è attiva in primo piano
+    isAppActive: (appName) => {
+        return ipcRenderer.invoke('isAppActive', appName);
     }
 });
 

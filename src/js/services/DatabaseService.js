@@ -505,17 +505,52 @@ class DatabaseService {
     }
 
     /**
+     * Crea un nuovo task (alias per addTask per compatibilità)
+     * @param {Object} task - Dati del task
+     * @returns {Promise<Object>} - Task aggiunto con ID generato
+     */
+    async createTask(task) {
+        console.log('DatabaseService: createTask chiamato con task completa:', JSON.stringify(task));
+
+        // Verifica esplicita del campo assigned_to
+        if (task.assigned_to !== undefined) {
+            console.log('Campo assigned_to presente:', task.assigned_to);
+            console.log('Tipo del campo assigned_to:', typeof task.assigned_to);
+        } else {
+            console.log('Campo assigned_to NON presente nella task');
+        }
+
+        return this.addTask(task);
+    }
+
+    /**
      * Aggiunge un nuovo task
      * @param {Object} task - Dati del task
      * @returns {Promise<Object>} - Task aggiunto con ID generato
      */
     async addTask(task) {
+        console.log('DatabaseService: addTask chiamato con:', JSON.stringify(task));
+
+        // Verifica il campo assigned_to anche qui
+        if (task.assigned_to !== undefined) {
+            console.log('addTask: Campo assigned_to presente:', task.assigned_to);
+        } else {
+            console.log('addTask: Campo assigned_to NON presente nella task');
+        }
+
         const now = new Date();
         const newTask = {
             ...task,
             created_at: task.created_at || now.getTime(),
             updated_at: now.getTime()
         };
+
+        // Verifica che il campo sia stato copiato correttamente in newTask
+        if (newTask.assigned_to !== undefined) {
+            console.log('newTask: Campo assigned_to presente dopo la copia:', newTask.assigned_to);
+        } else {
+            console.log('newTask: Campo assigned_to NON presente dopo la copia');
+        }
 
         // Calcola la posizione se non specificata
         if (!newTask.position) {
@@ -531,10 +566,17 @@ class DatabaseService {
                 request.onsuccess = () => {
                     // Recupera il task con l'ID generato
                     const getRequest = store.get(request.result);
-                    getRequest.onsuccess = () => resolve(getRequest.result);
+                    getRequest.onsuccess = () => {
+                        const savedTask = getRequest.result;
+                        console.log('Task salvata nel database:', JSON.stringify(savedTask));
+                        resolve(savedTask);
+                    };
                 };
 
-                request.onerror = (event) => reject(event.target.error);
+                request.onerror = (event) => {
+                    console.error('Errore durante il salvataggio della task:', event.target.error);
+                    reject(event.target.error);
+                };
             });
         });
     }

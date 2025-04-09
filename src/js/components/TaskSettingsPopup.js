@@ -15,8 +15,12 @@ export default class TaskSettingsPopup {
         this.initTimeSection();
         this.initDescriptionSection();
         this.initToggleHandlers();
+        this.initAssignedToSection();
 
         console.log('TaskSettingsPopup inizializzato');
+
+        // Popola il dropdown delle app al caricamento
+        this.populateAppDropdown();
     }
 
     /**
@@ -55,6 +59,20 @@ export default class TaskSettingsPopup {
                     <input type="checkbox" id="dailyToggle">
                     <span class="toggle-slider"></span>
                 </label>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-row">
+                <div class="settings-label">Assegnato a</div>
+                <div class="select-container">
+                    <select id="assignedToSelect" class="task-dropdown">
+                        <option value="">-- Seleziona --</option>
+                        <option value="persona1">Persona 1</option>
+                        <option value="persona2">Persona 2</option>
+                        <option value="persona3">Persona 3</option>
+                        <option value="persona4">Persona 4</option>
+                        <option value="persona5">Persona 5</option>
+                    </select>
+                </div>
             </div>
             <div class="settings-divider"></div>
             <div class="settings-row add-description" id="addDescriptionRow">
@@ -260,6 +278,27 @@ export default class TaskSettingsPopup {
     }
 
     /**
+     * Inizializza i gestori degli eventi per la sezione di assegnazione
+     */
+    initAssignedToSection() {
+        const assignedToSelect = document.getElementById('assignedToSelect');
+        if (assignedToSelect) {
+            assignedToSelect.addEventListener('change', (event) => {
+                const selectedValue = event.target.value;
+                console.log('Task assegnata a:', selectedValue);
+
+                // Imposta la variabile globale e assicurati che esista
+                window.currentAssignedTo = selectedValue;
+
+                // Debug - verifica se la variabile è stata impostata correttamente
+                console.log('Variabile window.currentAssignedTo impostata a:', window.currentAssignedTo);
+            });
+        } else {
+            console.error('Elemento assignedToSelect non trovato nel DOM');
+        }
+    }
+
+    /**
      * Raccoglie tutti i dati inseriti nel popup
      * @returns {Object} I dati raccolti
      */
@@ -267,6 +306,7 @@ export default class TaskSettingsPopup {
         const timerEnabled = document.getElementById('timerToggle').checked;
         const isDailyEnabled = document.getElementById('dailyToggle').checked;
         const description = document.getElementById('taskDescription').value.trim();
+        const assignedTo = document.getElementById('assignedToSelect').value;
 
         let days = 0, hours = 0, minutes = 0;
         if (!timerEnabled) {
@@ -280,6 +320,7 @@ export default class TaskSettingsPopup {
             timerEnabled,
             isDailyEnabled,
             description,
+            assignedTo,
             time: {
                 days,
                 hours,
@@ -315,6 +356,80 @@ export default class TaskSettingsPopup {
         // Notifica che la finestra è stata riposizionata
         if (window.electronAPI && typeof window.electronAPI.logMessage === 'function') {
             window.electronAPI.logMessage('Finestra riposizionata e mostrata');
+        }
+    }
+
+    /**
+     * Popola il dropdown con le app attualmente in esecuzione
+     */
+    async populateAppDropdown() {
+        const assignedToSelect = document.getElementById('assignedToSelect');
+        if (!assignedToSelect) {
+            console.error('Elemento assignedToSelect non trovato');
+            return;
+        }
+
+        try {
+            // Salva il valore correntemente selezionato (se esiste)
+            const currentValue = assignedToSelect.value;
+
+            // Pulisci il dropdown
+            assignedToSelect.innerHTML = '<option value="">-- Seleziona --</option>';
+
+            // Ottieni le app attive tramite electronAPI
+            if (window.electronAPI && typeof window.electronAPI.getActiveApps === 'function') {
+                console.log('Richiesta app attive in corso...');
+                const apps = await window.electronAPI.getActiveApps();
+
+                console.log('App attive ottenute:', apps);
+
+                // Aggiungi ciascuna app come opzione
+                if (Array.isArray(apps) && apps.length > 0) {
+                    apps.forEach(app => {
+                        const option = document.createElement('option');
+                        option.value = app;
+                        option.textContent = app;
+                        assignedToSelect.appendChild(option);
+                    });
+
+                    // Ripristina il valore selezionato in precedenza, se era valido
+                    if (currentValue && apps.includes(currentValue)) {
+                        assignedToSelect.value = currentValue;
+                    }
+                } else {
+                    console.warn('Nessuna app attiva rilevata, utilizzo placeholder');
+                    this.addPlaceholderOptions(assignedToSelect, currentValue);
+                }
+            } else {
+                console.warn('API getActiveApps non disponibile, utilizzo placeholder');
+                this.addPlaceholderOptions(assignedToSelect, currentValue);
+            }
+        } catch (error) {
+            console.error('Errore nel popolare il dropdown delle app:', error);
+            // In caso di errore, aggiungi comunque opzioni placeholder
+            this.addPlaceholderOptions(document.getElementById('assignedToSelect'));
+        }
+    }
+
+    /**
+     * Aggiunge opzioni placeholder al dropdown
+     * @param {HTMLElement} selectElement - Elemento select da popolare
+     * @param {string} currentValue - Valore attualmente selezionato
+     */
+    addPlaceholderOptions(selectElement, currentValue = '') {
+        if (!selectElement) return;
+
+        const placeholders = ['Chrome', 'Safari', 'Firefox', 'VS Code', 'Terminal'];
+        placeholders.forEach(app => {
+            const option = document.createElement('option');
+            option.value = app;
+            option.textContent = app;
+            selectElement.appendChild(option);
+        });
+
+        // Ripristina il valore selezionato in precedenza, se era valido
+        if (currentValue && placeholders.includes(currentValue)) {
+            selectElement.value = currentValue;
         }
     }
 
@@ -372,6 +487,9 @@ export default class TaskSettingsPopup {
 
         this.popup.style.display = 'block';
         this.positionPopup(targetIcon);
+
+        // Popola il dropdown con le app attive
+        this.populateAppDropdown();
     }
 
     /**
@@ -481,6 +599,22 @@ export default class TaskSettingsPopup {
             }
         }
 
+        // Imposta l'assegnazione
+        const assignedToSelect = document.getElementById('assignedToSelect');
+        if (assignedToSelect) {
+            if (task.assigned_to) {
+                assignedToSelect.value = task.assigned_to;
+                if (typeof window.currentAssignedTo !== 'undefined') {
+                    window.currentAssignedTo = task.assigned_to;
+                }
+            } else {
+                assignedToSelect.value = '';
+                if (typeof window.currentAssignedTo !== 'undefined') {
+                    window.currentAssignedTo = '';
+                }
+            }
+        }
+
         // Imposta tempo
         if (task.time_end_task) {
             const totalMinutes = task.time_end_task;
@@ -531,10 +665,12 @@ export default class TaskSettingsPopup {
         const isDailyEnabled = document.getElementById('dailyToggle').checked;
         const timerEnabled = document.getElementById('timerToggle').checked;
         const taskDescription = document.getElementById('taskDescription').value.trim();
+        const assignedTo = document.getElementById('assignedToSelect').value;
 
         console.log(`Giorni: ${taskDays}, Ore: ${taskHours}, Minuti: ${taskMinutes}`);
         console.log(`Giornaliera: ${isDailyEnabled}, Timer: ${timerEnabled}`);
         console.log(`Descrizione: ${taskDescription}`);
+        console.log(`Assegnato a prima del salvataggio: ${assignedTo}`);
 
         // Salva i valori nelle variabili globali per essere usati durante la creazione della task
         window.savedTaskDays = taskDays;
@@ -543,6 +679,10 @@ export default class TaskSettingsPopup {
         window.isDailyEnabled = isDailyEnabled;
         window.timerEnabled = timerEnabled;
         window.currentTaskDescription = taskDescription;
+        window.currentAssignedTo = assignedTo;
+
+        // Debug - verifica dopo l'assegnazione
+        console.log(`Variabile window.currentAssignedTo dopo il salvataggio: ${window.currentAssignedTo}`);
 
         // Importante: Se c'è almeno un valore di tempo, imposta timeSettingsSaved a true
         const hasSomeTime = taskDays > 0 || taskHours > 0 || taskMinutes > 0;
@@ -559,7 +699,8 @@ export default class TaskSettingsPopup {
                 time_end_task: taskDays * 24 * 60 + taskHours * 60 + taskMinutes,
                 is_daily: isDailyEnabled,
                 timer_enabled: timerEnabled,
-                description: taskDescription
+                description: taskDescription,
+                assigned_to: assignedTo
             };
 
             // Aggiorna la task

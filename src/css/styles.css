@@ -1,0 +1,18 @@
+/* Stili per il dropdown nel popup */
+.select-container {
+    flex: 1;
+}
+
+.task-dropdown {
+    width: 100%;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    font-size: 14px;
+}
+
+.task-dropdown:focus {
+    outline: none;
+    border-color: #0078d7;
+} 

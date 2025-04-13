@@ -350,18 +350,8 @@ class AppTimerTracker {
     normalizeAppName(appName) {
         if (!appName) return '';
 
-        // Converti a lowercase
-        let normalized = appName.toLowerCase();
-
-        // Rimuovi eventuali suffissi comuni
-        normalized = normalized.replace(/\.app$/, '');
-
-        // Rimuovi caratteri speciali e spazi extra
-        normalized = normalized.replace(/[^\w\s]/g, ' ').trim();
-        normalized = normalized.replace(/\s+/g, ' ');
-
-        console.log(`Normalizzazione: "${appName}" -> "${normalized}"`);
-        return normalized;
+        // Utilizza la funzione normalizeAppName globale
+        return window.normalizeAppName ? window.normalizeAppName(appName) : normalizeAppName(appName);
     }
 }
 

@@ -4,6 +4,9 @@ const path = require('path');
 require('electron-reload')(__dirname);
 require('dotenv').config();
 
+// Importa il modulo utils.js per la normalizzazione dei nomi delle app
+const { normalizeAppName } = require('./js/utils');
+
 // Importa il tracker delle app
 const AppTracker = require('./app-tracker');
 
@@ -449,7 +452,7 @@ ipcMain.handle('isAppActive', async (event, appName) => {
             return false;
         }
 
-        const isActive = foregroundApp.toLowerCase().includes(appName.toLowerCase());
+        const isActive = normalizeAppName(foregroundApp).includes(normalizeAppName(appName));
 
         // Inizializza il registro degli stati se non esiste
         if (!appTracker.activeAppStates) {

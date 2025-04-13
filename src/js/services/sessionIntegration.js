@@ -145,9 +145,9 @@ async function findTaskIdForApp(appName) {
             if (error) throw error;
 
             // Cerca una corrispondenza case-insensitive
-            const normalizedAppName = appName.toLowerCase();
+            const normalizedAppName = normalizeAppName(appName);
             const matchingTask = data.find(task => {
-                const taskApp = task.assigned_to ? task.assigned_to.toLowerCase() : '';
+                const taskApp = task.assigned_to ? normalizeAppName(task.assigned_to) : '';
                 return taskApp.includes(normalizedAppName) || normalizedAppName.includes(taskApp);
             });
 

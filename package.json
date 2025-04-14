@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "test": "node src/js/tests/testSession.js"
+    "test": "node src/js/tests/testSession.js",
+    "test-session-integration": "node src/js/tests/testSessionIntegration.js"
   },
   "keywords": [
     "electron",

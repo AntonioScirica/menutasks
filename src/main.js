@@ -8,7 +8,7 @@ require('dotenv').config();
 const { normalizeAppName } = require('./js/utils');
 
 // Importa il tracker delle app
-const AppTracker = require('./app-tracker');
+const AppTracker = require('./app-tracker.js');
 
 // Variabile per memorizzare l'ID del blocco di risparmio energetico
 let powerSaveBlockerId = null;

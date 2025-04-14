@@ -4,31 +4,47 @@
  */
 
 const SessionManager = require('./SessionManager');
+const { default: databaseService } = require('./DatabaseService.js');
+
 
 // Integrazione con l'app esistente
 let sessionManager = null;
 let lastActiveApp = null;
-let isChecking = false; // Flag per prevenire chiamate sovrapposte
+let isChecking = false;
+let supabase = null;
 
-/**
- * Inizializza il gestore delle sessioni
- * @param {Object} supabaseClient - Client Supabase
- * @returns {SessionManager} Istanza di SessionManager
- */
-function initSessionManager(supabaseClient) {
-    if (sessionManager) {
-        console.log('SessionManager già inizializzato');
-        return sessionManager;
-    }
+async function initSessionManager() {
+    if (sessionManager) return sessionManager;
 
-    console.log('Inizializzazione SessionManager...');
-    sessionManager = new SessionManager(supabaseClient);
+    await databaseService.initialize();
+    supabase = databaseService.supabase;
 
-    // Integrazione con il sistema esistente
+    sessionManager = new SessionManager(supabase);
     setupIntegration();
 
     return sessionManager;
 }
+
+async function findTaskIdForApp(appName) {
+    if (!supabase) throw new Error('Supabase non inizializzato');
+
+    const { data, error } = await supabase
+        .from('tasks')
+        .select('id, assigned_to')
+        .eq('completed', false)
+        .not('assigned_to', 'is', null);
+
+    if (error) throw error;
+
+    const normalizedAppName = normalizeAppName(appName);
+    const matchingTask = data.find(task => {
+        const taskApp = task.assigned_to ? normalizeAppName(task.assigned_to) : '';
+        return taskApp.includes(normalizedAppName) || normalizedAppName.includes(taskApp);
+    });
+
+    return matchingTask ? matchingTask.id : null;
+}
+
 
 /**
  * Configura l'integrazione con il sistema esistente
@@ -167,24 +183,26 @@ async function findTaskIdForApp(appName) {
  */
 async function getAppForTask(taskId) {
     try {
-        // Se c'è Supabase client disponibile globalmente
-        if (typeof supabase !== 'undefined') {
-            const { data, error } = await supabase
-                .from('tasks')
-                .select('assigned_to')
-                .eq('id', taskId)
-                .single();
-
-            if (error) throw error;
-
-            return data && data.assigned_to ? data.assigned_to : null;
+        if (!supabase) {
+            throw new Error('Supabase non inizializzato');
         }
+
+        const { data, error } = await supabase
+            .from('tasks')
+            .select('assigned_to')
+            .eq('id', taskId)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        return data?.assigned_to || null;
+
     } catch (error) {
         console.error(`Errore nell'ottenere l'app per task ${taskId}:`, error);
+        return null;
     }
-
-    return null;
 }
+
 
 /**
  * Ottiene l'istanza di SessionManager
@@ -195,11 +213,21 @@ function getSessionManager() {
 }
 
 // Esponi funzioni globali per debug
-window.sessionManager = {
-    init: initSessionManager,
-    get: getSessionManager,
-    listSessions: () => sessionManager ? sessionManager.getAllSessions() : []
-};
+if (typeof window !== 'undefined') {
+    window.sessionManager = {
+        init: initSessionManager,
+        get: getSessionManager,
+        listSessions: () => sessionManager ? sessionManager.getAllSessions() : []
+    };
+
+    // Eventi app e integrazioni
+    window.addEventListener('beforeunload', () => {
+        if (sessionManager) {
+            sessionManager.flushToDisk();
+        }
+    });
+}
+
 
 module.exports = {
     initSessionManager,

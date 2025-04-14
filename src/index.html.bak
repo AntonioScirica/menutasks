@@ -2303,7 +2303,7 @@
                         .from('tasks')
                         .select('id, parent_id')
                         .eq('id', draggedTaskId)
-                        .single();
+                        .maybeSingle();
 
                     if (checkError) {
                         console.error('DEBUG: Errore nel controllo della task:', checkError);
@@ -4129,7 +4129,7 @@
                         .from('tasks')
                         .select('id, parent_id')
                         .eq('id', draggedTaskId)
-                        .single();
+                        .maybeSingle();
 
                     if (checkError) {
                         console.error('DEBUG: Errore nel controllo della task:', checkError);
@@ -4860,7 +4860,7 @@
                             .from('tasks')
                             .select('priority')
                             .eq('id', parentId)
-                            .single();
+                            .maybeSingle();
 
                         if (!parentError && parentData && parentData.priority) {
                             newTask.priority = parentData.priority;
@@ -5068,7 +5068,7 @@
                             .from('tasks')
                             .select('priority, is_daily')
                             .eq('id', taskId)
-                            .single();
+                            .maybeSingle();
 
                         if (error) throw error;
 
@@ -5286,7 +5286,7 @@
                     .from('tasks')
                     .select('completed, completed_at')
                     .eq('id', taskId)
-                    .single();
+                    .maybeSingle();
 
                 if (taskInfoError) throw taskInfoError;
 
@@ -5362,7 +5362,7 @@
                         .from('tasks')
                         .select('*')
                         .eq('id', taskId)
-                        .single();
+                        .maybeSingle();
 
                     if (error) throw error;
 
@@ -5803,7 +5803,7 @@
                             .from('tasks')
                             .select('timer_seconds, timer_enabled, time_end_task')
                             .eq('id', taskId)
-                            .single();
+                            .maybeSingle();
 
                         if (!timerError && timerData) {
                             // Controlla se il timer è abilitato e ha dei secondi
@@ -5829,7 +5829,7 @@
                             .from('tasks')
                             .select('time_end_task, timer_enabled')
                             .eq('id', taskId)
-                            .single();
+                            .maybeSingle();
 
                         // Aggiungi il tempo al valore esistente o inizializza a 0
                         // Attenzione: aggiungi il tempo dal timer solo se timer_enabled è true
@@ -5859,7 +5859,7 @@
                         .from('tasks')
                         .select('timer_enabled')
                         .eq('id', taskId)
-                        .single();
+                        .maybeSingle();
 
                     if (!taskInfoError && taskInfo && taskInfo.timer_enabled) {
                         startTaskTimer(taskId);
@@ -5871,7 +5871,7 @@
                     .from('tasks')
                     .select('*')
                     .eq('id', taskId)
-                    .single();
+                    .maybeSingle();
 
                 if (getError) throw getError;
 
@@ -5958,7 +5958,7 @@
                     .from('tasks')
                     .select('completed, completed_at')
                     .eq('id', taskId)
-                    .single();
+                    .maybeSingle();
 
                 if (taskInfoError) throw taskInfoError;
 
@@ -7256,7 +7256,7 @@
                     .from('tasks')
                     .select('*')
                     .eq('id', taskId)
-                    .single();
+                    .maybeSingle();
 
                 if (error) throw error;
                 return data;
@@ -7320,7 +7320,7 @@
                     .from('tasks')
                     .select('timer_enabled, completed')
                     .eq('id', taskId)
-                    .single();
+                    .maybeSingle();
 
                 if (checkError) {
                     console.error(`Errore nella verifica della task ${taskId}:`, checkError);

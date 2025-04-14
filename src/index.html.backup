@@ -983,7 +983,7 @@
                         .from('tasks')
                         .select('id, parent_id')
                         .eq('id', draggedTaskId)
-                        .single();
+                        .maybeSingle();
 
                     if (checkError) {
                         console.error('Errore nel controllo della task:', checkError);
@@ -1550,7 +1550,7 @@
                             .from('tasks')
                             .select('priority')
                             .eq('id', parentId)
-                            .single();
+                            .maybeSingle();
 
                         if (!parentError && parentData && parentData.priority) {
                             newTask.priority = parentData.priority;
@@ -1709,7 +1709,7 @@
                             .from('tasks')
                             .select('priority')
                             .eq('id', taskId)
-                            .single();
+                            .maybeSingle();
 
                         if (error) throw error;
 
@@ -1910,7 +1910,7 @@
                     .from('tasks')
                     .select('completed, completed_at')
                     .eq('id', taskId)
-                    .single();
+                    .maybeSingle();
 
                 if (taskInfoError) throw taskInfoError;
 
@@ -1981,7 +1981,7 @@
                         .from('tasks')
                         .select('priority')
                         .eq('id', taskId)
-                        .single();
+                        .maybeSingle();
 
                     if (error) throw error;
 
@@ -2250,7 +2250,7 @@
                     .from('tasks')
                     .select('*')
                     .eq('id', taskId)
-                    .single();
+                    .maybeSingle();
 
                 if (taskError) throw taskError;
 
@@ -2300,7 +2300,7 @@
                     .from('tasks')
                     .select('completed, completed_at')
                     .eq('id', taskId)
-                    .single();
+                    .maybeSingle();
 
                 if (taskInfoError) throw taskInfoError;
 

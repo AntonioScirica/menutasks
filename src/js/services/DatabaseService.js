@@ -2,6 +2,11 @@
  * DatabaseService - Gestisce l'interfacciamento con IndexedDB e Supabase
  * Fornisce un'API unificata per la gestione dei dati dell'applicazione
  */
+
+const { createClient } = require('@supabase/supabase-js');
+
+
+
 class DatabaseService {
     constructor() {
         this.db = null;
@@ -17,7 +22,7 @@ class DatabaseService {
      * Inizializza il database e la connessione a Supabase
      * @returns {Promise<void>}
      */
-    async initialize() {
+    async initialize({ skipIndexedDB = false } = {}) {
         console.log('DatabaseService: Inizializzazione...');
 
         if (this.isInitialized) {
@@ -26,16 +31,17 @@ class DatabaseService {
         }
 
         try {
-            // Inizializza IndexedDB
-            await this.initIndexedDB();
+            if (!skipIndexedDB) {
+                await this.initIndexedDB();
+            } else {
+                console.log('DatabaseService: IndexedDB saltato (solo Supabase)');
+            }
 
-            // Inizializza Supabase se disponibile
             await this.initSupabase();
 
             this.isInitialized = true;
             console.log('DatabaseService: Inizializzazione completata');
 
-            // Sincronizza i dati con Supabase se disponibile
             if (this.supabase) {
                 this.syncWithSupabase();
             }
@@ -44,6 +50,8 @@ class DatabaseService {
             throw error;
         }
     }
+
+
 
     /**
      * Inizializza IndexedDB
@@ -97,51 +105,55 @@ class DatabaseService {
      * @returns {Promise<void>}
      */
     async initSupabase() {
-        // Verifica se Supabase è disponibile nell'ambiente
-        if (typeof supabaseClient !== 'undefined') {
-            try {
-                const { SUPABASE_URL, SUPABASE_KEY } = await this.getSupabaseCredentials();
+        try {
+            const { SUPABASE_URL, SUPABASE_KEY } = await this.getSupabaseCredentials();
 
-                if (SUPABASE_URL && SUPABASE_KEY) {
-                    this.supabase = supabaseClient.createClient(SUPABASE_URL, SUPABASE_KEY);
-                    console.log('DatabaseService: Supabase inizializzato');
+            if (SUPABASE_URL && SUPABASE_KEY) {
+                this.supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+                console.log('DatabaseService: Supabase inizializzato');
 
-                    // Carica l'ultima sincronizzazione
-                    const syncData = await this.getAppState('lastSync');
-                    if (syncData) {
-                        this.lastSync = new Date(syncData.value);
-                        console.log(`DatabaseService: Ultima sincronizzazione: ${this.lastSync}`);
-                    }
-                } else {
-                    console.log('DatabaseService: Credenziali Supabase non disponibili');
+                // Carica l'ultima sincronizzazione
+                const syncData = await this.getAppState('lastSync');
+                if (syncData) {
+                    this.lastSync = new Date(syncData.value);
+                    console.log(`DatabaseService: Ultima sincronizzazione: ${this.lastSync}`);
                 }
-            } catch (error) {
-                console.error('DatabaseService: Errore inizializzazione Supabase', error);
-                // Continuiamo con solo IndexedDB
+            } else {
+                console.log('DatabaseService: Credenziali Supabase non disponibili');
             }
-        } else {
-            console.log('DatabaseService: Supabase non disponibile, utilizzo solo IndexedDB');
+        } catch (error) {
+            console.error('DatabaseService: Errore inizializzazione Supabase', error);
         }
     }
+
 
     /**
      * Ottiene le credenziali per Supabase
      * @returns {Promise<{SUPABASE_URL: string, SUPABASE_KEY: string}>}
      */
     async getSupabaseCredentials() {
-        // Prova a caricare le credenziali dallo storage
-        const credentials = await this.getAppState('supabaseCredentials');
+        // Se IndexedDB è disabilitato, usa direttamente le variabili .env
+        if (!this.db) {
+            console.log('DatabaseService: IndexedDB assente, uso credenziali da .env');
 
+            return {
+                SUPABASE_URL: process.env.SUPABASE_URL || '',
+                SUPABASE_KEY: process.env.SUPABASE_KEY || ''
+            };
+        }
+
+        // Altrimenti prova a prenderle da IndexedDB
+        const credentials = await this.getAppState('supabaseCredentials');
         if (credentials) {
             return credentials.value;
         }
 
-        // Credenziali predefinite (vuote)
         return {
             SUPABASE_URL: '',
             SUPABASE_KEY: ''
         };
     }
+
 
     /**
      * Salva le credenziali di Supabase
@@ -161,27 +173,29 @@ class DatabaseService {
      * @returns {Promise<void>}
      */
     async syncWithSupabase() {
-        if (!this.supabase || this.syncInProgress) {
+        if (!this.supabase || this.syncInProgress || !this.db) {
+            console.log('DatabaseService: Sync disattivata – requisiti non soddisfatti');
             return;
         }
+
 
         try {
             this.syncInProgress = true;
             console.log('DatabaseService: Sincronizzazione con Supabase in corso...');
 
-            // Ottieni tutti i dati locali
-            const projects = await this.getAllProjects();
-            const tasks = await this.getAllTasks();
+            // Se IndexedDB è disponibile, esegui sincronizzazione completa
+            if (this.db) {
+                const projects = await this.getAllProjects();
+                const tasks = await this.getAllTasks();
 
-            // Sincronizza i progetti
-            await this.syncProjects(projects);
+                await this.syncProjects(projects);
+                await this.syncTasks(tasks);
 
-            // Sincronizza i task
-            await this.syncTasks(tasks);
-
-            // Aggiorna l'ultima sincronizzazione
-            this.lastSync = new Date();
-            await this.saveAppState('lastSync', this.lastSync);
+                this.lastSync = new Date();
+                await this.saveAppState('lastSync', this.lastSync);
+            } else {
+                console.log('DatabaseService: IndexedDB non disponibile – sincronizzazione locale saltata');
+            }
 
             console.log('DatabaseService: Sincronizzazione completata');
         } catch (error) {
@@ -190,6 +204,7 @@ class DatabaseService {
             this.syncInProgress = false;
         }
     }
+
 
     /**
      * Sincronizza i progetti con Supabase
@@ -331,6 +346,7 @@ class DatabaseService {
         });
     }
 
+
     // =====================================================================
     // PROGETTI
     // =====================================================================
@@ -340,6 +356,11 @@ class DatabaseService {
      * @returns {Promise<Array>} - Lista dei progetti
      */
     async getAllProjects() {
+        if (!this.db) {
+            console.log('DatabaseService: getAllProjects saltato – IndexedDB non disponibile');
+            return [];
+        }
+
         return new Promise((resolve, reject) => {
             this.dbTransaction('projects', 'readonly', (store, _, reject) => {
                 const request = store.getAll();
@@ -349,6 +370,7 @@ class DatabaseService {
             });
         });
     }
+
 
     /**
      * Ottiene un progetto specifico dal database
@@ -461,6 +483,11 @@ class DatabaseService {
      * @returns {Promise<Array>} - Lista dei task
      */
     async getAllTasks() {
+        if (!this.db) {
+            console.log('DatabaseService: getAllTasks saltato – IndexedDB non disponibile');
+            return [];
+        }
+
         return new Promise((resolve, reject) => {
             this.dbTransaction('tasks', 'readonly', (store, _, reject) => {
                 const request = store.getAll();
@@ -727,6 +754,11 @@ class DatabaseService {
      * @returns {Promise<Object>} - Valore dello stato
      */
     async getAppState(key) {
+        if (!this.db) {
+            console.log('DatabaseService: getAppState saltato – IndexedDB non disponibile');
+            return null;
+        }
+
         return new Promise((resolve, reject) => {
             this.dbTransaction('appState', 'readonly', (store, _, reject) => {
                 const request = store.get(key);
@@ -737,6 +769,8 @@ class DatabaseService {
         });
     }
 
+
+
     /**
      * Salva un valore nello stato dell'app
      * @param {string} key - Chiave dello stato
@@ -744,6 +778,11 @@ class DatabaseService {
      * @returns {Promise<void>}
      */
     async saveAppState(key, value) {
+        if (!this.db) {
+            console.log('DatabaseService: saveAppState saltato – IndexedDB non disponibile');
+            return;
+        }
+
         return new Promise((resolve, reject) => {
             this.dbTransaction('appState', 'readwrite', (store, _, reject) => {
                 const request = store.put({ key, value });
@@ -754,12 +793,18 @@ class DatabaseService {
         });
     }
 
+
     /**
      * Elimina un valore dallo stato dell'app
      * @param {string} key - Chiave dello stato da eliminare
      * @returns {Promise<void>}
      */
     async deleteAppState(key) {
+        if (!this.db) {
+            console.log('DatabaseService: deleteAppState saltato – IndexedDB non disponibile');
+            return;
+        }
+
         return new Promise((resolve, reject) => {
             this.dbTransaction('appState', 'readwrite', (store, _, reject) => {
                 const request = store.delete(key);
@@ -769,6 +814,7 @@ class DatabaseService {
             });
         });
     }
+
 
     /**
      * Salva l'ultimo progetto selezionato
@@ -789,6 +835,25 @@ class DatabaseService {
     }
 }
 
-// Esporta un'istanza singleton del servizio
 const databaseService = new DatabaseService();
-export default databaseService; 
+
+async function initializeSupabaseOnly() {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_KEY = process.env.SUPABASE_KEY;
+
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+        throw new Error('Credenziali Supabase mancanti');
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    return supabase;
+}
+
+// Questo è quello che rende "visibile" il codice agli altri file
+module.exports = {
+    databaseService,           // per usarlo nell'app
+    initializeSupabaseOnly     // per usarlo nei test
+};
+
+
